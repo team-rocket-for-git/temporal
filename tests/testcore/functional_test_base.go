@@ -33,6 +33,7 @@ import (
 	"go.temporal.io/server/common/namespace"
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/common/persistence/intercept"
 	persistencetests "go.temporal.io/server/common/persistence/persistence-tests"
 	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/common/primitives/timestamp"
@@ -46,6 +47,10 @@ import (
 	"go.temporal.io/server/common/testing/testtelemetry"
 	"go.temporal.io/server/common/testing/updateutils"
 	"go.temporal.io/server/components/nexusoperations"
+	"go.temporal.io/server/common/testing/bats"
+	umpirelib "go.temporal.io/server/tools/umpire"
+	"go.temporal.io/server/tools/umpire/pitcher"
+	"go.temporal.io/server/tools/umpire/rulebook"
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -68,6 +73,7 @@ type (
 
 		Logger       log.Logger
 		otelExporter *testtelemetry.MemoryExporter
+		catch        *bats.Catch
 
 		testCluster *TestCluster
 		// TODO (alex): this doesn't have to be a separate field. All usages can be replaced with values from testCluster itself.
@@ -99,6 +105,8 @@ type (
 		FaultInjectionConfig   *config.FaultInjection
 		NumHistoryShards       int32
 		SharedCluster          bool
+		AdditionalInterceptors []grpc.UnaryServerInterceptor
+		PersistenceInterceptor intercept.PersistenceInterceptor
 	}
 	TestClusterOption func(params *TestClusterParams)
 )
@@ -124,6 +132,18 @@ func init() {
 func WithFxOptionsForService(serviceName primitives.ServiceName, options ...fx.Option) TestClusterOption {
 	return func(params *TestClusterParams) {
 		params.ServiceOptions[serviceName] = append(params.ServiceOptions[serviceName], options...)
+	}
+}
+
+func WithAdditionalGrpcInterceptors(interceptors ...grpc.UnaryServerInterceptor) TestClusterOption {
+	return func(params *TestClusterParams) {
+		params.AdditionalInterceptors = interceptors
+	}
+}
+
+func WithPersistenceInterceptor(interceptor intercept.PersistenceInterceptor) TestClusterOption {
+	return func(params *TestClusterParams) {
+		params.PersistenceInterceptor = interceptor
 	}
 }
 
@@ -227,6 +247,24 @@ func (s *FunctionalTestBase) TaskPoller() *taskpoller.TaskPoller {
 	return s.taskPoller
 }
 
+func (s *FunctionalTestBase) GetUmpire() *umpirelib.Umpire {
+	// Umpire is always initialized in SetupSuiteWithCluster via Catch
+	if s.catch == nil {
+		panic("CATCH system not initialized - did you forget to call SetupSuite()?")
+	}
+	ump := s.catch.Umpire()
+	if ump == nil {
+		panic("Umpire not initialized - ensure EnableUmpire is true in CATCH config")
+	}
+	return ump
+}
+
+// ConfigurePitcher configures fault injection for a specific RPC method.
+// The targetType should be a proto message type (e.g., &matchingservice.AddWorkflowTaskRequest{}).
+func (s *FunctionalTestBase) ConfigurePitcher(targetType any, config pitcher.PlayConfig) {
+	s.GetTestCluster().Pitcher().Configure(targetType, config)
+}
+
 func (s *FunctionalTestBase) SetupSuite() {
 	s.SetupSuiteWithCluster()
 }
@@ -263,6 +301,22 @@ func (s *FunctionalTestBase) setupCluster(options ...TestClusterOption) {
 		s.Logger = tl
 	}
 
+	// Initialize CATCH system for telemetry verification BEFORE creating interceptors.
+	var err error
+	s.catch, err = bats.New(bats.Config{
+		Logger:        s.Logger,
+		EnableScout:   true,
+		EnableUmpire:  true,
+		EnablePitcher: true,
+	})
+	s.Require().NoError(err)
+
+	// Build interceptor list - always include catch interceptor
+	// NOTE: Catch handles setting global umpire and pitcher internally
+	additionalInterceptors := make([]grpc.UnaryServerInterceptor, 0, len(params.AdditionalInterceptors)+1)
+	additionalInterceptors = append(additionalInterceptors, bats.UnaryServerInterceptor())
+	additionalInterceptors = append(additionalInterceptors, params.AdditionalInterceptors...)
+
 	s.testClusterConfig = &TestClusterConfig{
 		FaultInjection: params.FaultInjectionConfig,
 		HistoryConfig: HistoryConfig{
@@ -273,6 +327,8 @@ func (s *FunctionalTestBase) setupCluster(options ...TestClusterOption) {
 		EnableMetricsCapture:   true,
 		EnableArchival:         params.ArchivalEnabled,
 		EnableMTLS:             params.EnableMTLS,
+		AdditionalInterceptors: additionalInterceptors,
+		PersistenceInterceptor: params.PersistenceInterceptor,
 	}
 
 	// Apply configuration for shared clusters.
@@ -294,7 +350,16 @@ func (s *FunctionalTestBase) setupCluster(options ...TestClusterOption) {
 		}
 	}
 
-	var err error
+	// Add CATCH span exporter for observability
+	if s.testClusterConfig.SpanExporters == nil {
+		s.testClusterConfig.SpanExporters = make(map[telemetry.SpanExporterType]sdktrace.SpanExporter)
+	}
+	// Multiplex catch exporter with existing exporters
+	s.testClusterConfig.SpanExporters[telemetry.OtelTracesOtlpExporterType] = testtelemetry.NewMultiExporter(
+		s.testClusterConfig.SpanExporters[telemetry.OtelTracesOtlpExporterType],
+		s.catch.SpanExporter(),
+	)
+
 	testClusterFactory := NewTestClusterFactory()
 	s.testCluster, err = testClusterFactory.NewCluster(s.T(), s.testClusterConfig, s.Logger)
 	s.Require().NoError(err)
@@ -323,6 +388,8 @@ func (s *FunctionalTestBase) SetupTest() {
 	s.testCluster.host.grpcClientInterceptor.Set(func(ctx context.Context) context.Context {
 		return metadata.AppendToOutgoingContext(ctx, "temporal-test-name", s.T().Name())
 	})
+
+	// Umpire is now ready to process traces (no start needed)
 }
 
 func (s *FunctionalTestBase) SetupSubTest() {
@@ -410,6 +477,29 @@ func (s *FunctionalTestBase) exportOTELTraces() {
 	_ = s.otelExporter.Shutdown(NewContext())
 }
 
+func (s *FunctionalTestBase) checkWatchdog() {
+	// CATCH is always initialized in SetupSuiteWithCluster
+	// Run a final check to verify all telemetry invariants.
+	if s.catch != nil {
+		violations := s.catch.Check(context.Background())
+		if len(violations) > 0 {
+			s.T().Logf("Umpire detected %d violation(s):", len(violations))
+			for _, vi := range violations {
+				if v, ok := vi.(rulebook.Violation); ok {
+					s.T().Logf("  [%s] %s: %v", v.Model, v.Message, v.Tags)
+				}
+			}
+			// Fail the test when violations are detected
+			s.Require().Empty(violations, "Umpire detected %d violation(s)", len(violations))
+		}
+
+		// Shutdown umpire.
+		if err := s.catch.Shutdown(context.Background()); err != nil {
+			s.T().Logf("catch shutdown error: %v", err)
+		}
+	}
+}
+
 func (s *FunctionalTestBase) TearDownCluster() {
 	s.Require().NoError(s.MarkNamespaceAsDeleted(s.Namespace()))
 	s.Require().NoError(s.MarkNamespaceAsDeleted(s.ExternalNamespace()))
@@ -417,11 +507,18 @@ func (s *FunctionalTestBase) TearDownCluster() {
 	if s.testCluster != nil {
 		s.Require().NoError(s.testCluster.TearDownCluster())
 	}
+	s.testCluster.TearDownCluster()
 }
 
 // **IMPORTANT**: When overridding this, make sure to invoke `s.FunctionalTestBase.TearDownTest()`.
 func (s *FunctionalTestBase) TearDownTest() {
+	// Reset CATCH state between tests
+	if s.catch != nil {
+		s.catch.Reset()
+	}
+
 	s.exportOTELTraces()
+	s.checkWatchdog()
 	s.tearDownSdk()
 	s.testCluster.host.grpcClientInterceptor.Set(nil)
 }

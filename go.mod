@@ -19,6 +19,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/go-faker/faker/v4 v4.6.0
 	github.com/go-jose/go-jose/v4 v4.0.5
+	github.com/go-playground/validator/v10 v10.28.0
 	github.com/go-sql-driver/mysql v1.9.0
 	github.com/gocql/gocql v1.7.0
 	github.com/golang-jwt/jwt/v4 v4.5.2
@@ -31,11 +32,13 @@ require (
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/jstemmer/go-junit-report/v2 v2.1.0
 	github.com/lib/pq v1.10.9
+	github.com/looplab/fsm v1.0.3
 	github.com/maruel/panicparse/v2 v2.4.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nexus-rpc/sdk-go v0.5.2-0.20260211051645-26b0b4c584e5
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/olivere/elastic/v7 v7.0.32
+	github.com/pborman/uuid v1.2.1
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.21.0
 	github.com/prometheus/client_model v0.6.1
@@ -43,10 +46,13 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sony/gobreaker v1.0.0
 	github.com/stretchr/testify v1.10.0
+	github.com/temporalio/omes v1.0.0
+	github.com/temporalio/omes/workers/go v0.0.0-00010101000000-000000000000
 	github.com/temporalio/ringpop-go v0.0.0-20250130211428-b97329e994f7
 	github.com/temporalio/sqlparser v0.0.0-20231115171017-f4060bcfa6cb
 	github.com/temporalio/tchannel-go v1.22.1-0.20240528171429-1db37fdea938
 	github.com/tidwall/btree v1.8.1
+	github.com/tidwall/buntdb v1.3.2
 	github.com/uber-go/tally/v4 v4.1.17
 	github.com/urfave/cli v1.22.16
 	github.com/urfave/cli/v2 v2.27.5
@@ -79,7 +85,19 @@ require (
 	modernc.org/sqlite v1.44.3
 )
 
-require github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2 // indirect
+require (
+	github.com/gabriel-vasile/mimetype v1.4.10 // indirect
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2 // indirect
+	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/tidwall/gjson v1.14.3 // indirect
+	github.com/tidwall/grect v0.1.4 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/tidwall/rtred v0.1.2 // indirect
+	github.com/tidwall/tinyqueue v0.1.1 // indirect
+)
 
 require (
 	cel.dev/expr v0.23.1 // indirect
@@ -104,7 +122,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20250121191232-2f005788dc42 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.6 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/dustin/go-humanize v1.0.1
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.2.1 // indirect
@@ -172,4 +190,13 @@ require (
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
+)
+
+// Omes uses a multi-module repository structure
+// Replace directives to handle internal module dependencies
+// The workers/go submodule requires omes@v1.0.0 which doesn't exist,
+// so we redirect it to the actual commit hash
+replace (
+	github.com/temporalio/omes v1.0.0 => github.com/temporalio/omes v0.0.0-20251119184504-586248ce060d
+	github.com/temporalio/omes/workers/go => github.com/temporalio/omes/workers/go v0.0.0-20251119184504-586248ce060d
 )

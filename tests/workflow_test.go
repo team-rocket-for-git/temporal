@@ -88,6 +88,13 @@ func (s *WorkflowTestSuite) TestStartWorkflowExecution() {
 		s.EqualHistoryEvents(`
   1 WorkflowExecutionStarted {"Attempt":1,"WorkflowTaskTimeout":{"Nanos":0,"Seconds":10}}
   2 WorkflowTaskScheduled`, historyEvents)
+
+		// Verify moves were recorded via scorebook
+		scorebook := s.GetUmpire().Scorebook()
+		startWorkflowMoves := scorebook.QueryByWorkflowIDAndType(request.WorkflowId, "StartWorkflow")
+		s.T().Logf("Total StartWorkflow moves captured: %d", len(startWorkflowMoves))
+		s.GreaterOrEqual(len(startWorkflowMoves), 1,
+			"Expected at least 1 StartWorkflow move to be recorded")
 	})
 
 	s.Run("start twice - same request", func() {
@@ -930,6 +937,12 @@ func (s *WorkflowTestSuite) TestTerminateWorkflow() {
 	})
 	s.NoError(err)
 
+	// Verify moves were recorded via scorebook
+	// Note: TerminateWorkflow move type not yet implemented in scorebook
+	scorebook := s.GetUmpire().Scorebook()
+	allMoves := scorebook.QueryByWorkflowID(tv.WorkflowID())
+	s.T().Logf("Total moves captured for workflow: %d", len(allMoves))
+
 	var historyEvents []*historypb.HistoryEvent
 GetHistoryLoop:
 	for range 10 {
@@ -1148,6 +1161,23 @@ func (s *WorkflowTestSuite) TestSequentialWorkflow() {
 	_, err := poller.PollAndProcessWorkflowTask(testcore.WithDumpHistory)
 	s.NoError(err)
 	s.True(workflowComplete)
+
+	// Verify moves were recorded via scorebook
+	scorebook := s.GetUmpire().Scorebook()
+
+	// Check workflow task moves
+	workflowTaskMoves := scorebook.QueryByWorkflowIDAndType(tv.WorkflowID(), "PollWorkflowTask")
+	s.T().Logf("Total PollWorkflowTask moves captured: %d", len(workflowTaskMoves))
+
+	// Check activity task moves
+	activityTaskMoves := scorebook.QueryByWorkflowIDAndType(tv.WorkflowID(), "PollActivityTask")
+	s.T().Logf("Total PollActivityTask moves captured: %d", len(activityTaskMoves))
+
+	// Check all moves for this workflow
+	allWorkflowMoves := scorebook.QueryByWorkflowID(tv.WorkflowID())
+	s.T().Logf("Total moves captured for workflow: %d", len(allWorkflowMoves))
+	s.GreaterOrEqual(len(allWorkflowMoves), 1,
+		"Expected at least 1 move to be recorded for this workflow")
 }
 
 func (s *WorkflowTestSuite) TestCompleteWorkflowTaskAndCreateNewOne() {

@@ -165,7 +165,7 @@ func TestWorkflowUpdateSuite(t *testing.T) {
 				s.NotNil(res.NewTask)
 				updateResult := <-updateResultCh
 				s.Equal("success-result-of-"+s.Tv().UpdateID(), testcore.DecodeString(s.T(), updateResult.GetOutcome().GetSuccess()))
-				s.EqualValues(0, res.NewTask.ResetHistoryEventId)
+				s.EqualValues(0, res.NewTask.ResetHistoryEventId) // why? no context.
 
 				// Test non-blocking poll
 				for _, waitPolicy := range []*updatepb.WaitPolicy{{LifecycleStage: enumspb.UPDATE_WORKFLOW_EXECUTION_LIFECYCLE_STAGE_UNSPECIFIED}, nil} {

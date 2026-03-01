@@ -34,6 +34,7 @@ import (
 	"go.temporal.io/server/common/metrics/metricstest"
 	"go.temporal.io/server/common/namespace/nsreplication"
 	"go.temporal.io/server/common/persistence"
+	"go.temporal.io/server/common/persistence/intercept"
 	persistencetests "go.temporal.io/server/common/persistence/persistence-tests"
 	esclient "go.temporal.io/server/common/persistence/visibility/store/elasticsearch/client"
 	"go.temporal.io/server/common/pprof"
@@ -42,11 +43,13 @@ import (
 	"go.temporal.io/server/common/searchattribute"
 	"go.temporal.io/server/common/telemetry"
 	"go.temporal.io/server/common/testing/freeport"
+	"go.temporal.io/server/tools/umpire/pitcher"
 	"go.temporal.io/server/temporal"
 	"go.temporal.io/server/temporal/environment"
 	"go.temporal.io/server/tests/testutils"
 	"go.uber.org/fx"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc"
 )
 
 type (
@@ -88,6 +91,11 @@ type (
 		SpanExporters          map[telemetry.SpanExporterType]sdktrace.SpanExporter
 		// ServiceFxOptions can be populated using WithFxOptionsForService.
 		ServiceFxOptions map[primitives.ServiceName][]fx.Option
+
+		DeprecatedFrontendAddress string `yaml:"frontendAddress"`
+		DeprecatedClusterNo       int    `yaml:"clusterno"`
+		AdditionalInterceptors    []grpc.UnaryServerInterceptor
+		PersistenceInterceptor    intercept.PersistenceInterceptor
 	}
 
 	TestClusterFactory interface {
@@ -100,8 +108,8 @@ type (
 )
 
 const (
-	httpProtocol transferProtocol = "http"
-	grpcProtocol transferProtocol = "grpc"
+	HTTPProtocol transferProtocol = "http"
+	GRPCProtocol transferProtocol = "grpc"
 )
 
 func (a *ArchiverBase) Metadata() archiver.ArchivalMetadata {
@@ -174,13 +182,13 @@ func newClusterWithPersistenceTestBaseFactory(t *testing.T, clusterConfig *TestC
 
 	// allocate ports
 	hostsByProtocolByService := map[transferProtocol]map[primitives.ServiceName]static.Hosts{
-		grpcProtocol: {
+		GRPCProtocol: {
 			primitives.FrontendService: {All: makeAddresses(clusterConfig.FrontendConfig.NumFrontendHosts)},
 			primitives.MatchingService: {All: makeAddresses(clusterConfig.MatchingConfig.NumMatchingHosts)},
 			primitives.HistoryService:  {All: makeAddresses(clusterConfig.HistoryConfig.NumHistoryHosts)},
 			primitives.WorkerService:   {All: makeAddresses(clusterConfig.WorkerConfig.NumWorkers)},
 		},
-		httpProtocol: {
+		HTTPProtocol: {
 			primitives.FrontendService: {All: makeAddresses(clusterConfig.FrontendConfig.NumFrontendHosts)},
 		},
 	}
@@ -188,8 +196,8 @@ func newClusterWithPersistenceTestBaseFactory(t *testing.T, clusterConfig *TestC
 	if len(clusterConfig.ClusterMetadata.ClusterInformation) > 0 {
 		// set self-address for current cluster
 		ci := clusterConfig.ClusterMetadata.ClusterInformation[clusterConfig.ClusterMetadata.CurrentClusterName]
-		ci.RPCAddress = hostsByProtocolByService[grpcProtocol][primitives.FrontendService].All[0]
-		ci.HTTPAddress = hostsByProtocolByService[httpProtocol][primitives.FrontendService].All[0]
+		ci.RPCAddress = hostsByProtocolByService[GRPCProtocol][primitives.FrontendService].All[0]
+		ci.HTTPAddress = hostsByProtocolByService[HTTPProtocol][primitives.FrontendService].All[0]
 		clusterConfig.ClusterMetadata.ClusterInformation[clusterConfig.ClusterMetadata.CurrentClusterName] = ci
 	}
 
@@ -208,10 +216,10 @@ func newClusterWithPersistenceTestBaseFactory(t *testing.T, clusterConfig *TestC
 	}
 	clusterConfig.Persistence.Logger = logger
 	clusterConfig.Persistence.FaultInjection = clusterConfig.FaultInjection
-
+	clusterConfig.Persistence.Interceptor = clusterConfig.PersistenceInterceptor
 	testBase := tbFactory.NewTestBase(&clusterConfig.Persistence)
-
 	testBase.Setup(clusterMetadataConfig)
+
 	archiverBase := newArchiverBase(clusterConfig.EnableArchival, testBase.ExecutionManager, logger)
 
 	pConfig := testBase.DefaultTestCluster.Config()
@@ -329,6 +337,8 @@ func newClusterWithPersistenceTestBaseFactory(t *testing.T, clusterConfig *TestC
 		TaskCategoryRegistry:             temporal.TaskCategoryRegistryProvider(archiverBase.metadata),
 		HostsByProtocolByService:         hostsByProtocolByService,
 		SpanExporters:                    clusterConfig.SpanExporters,
+		AdditionalInterceptors:           clusterConfig.AdditionalInterceptors,
+		PersistenceInterceptor:           clusterConfig.PersistenceInterceptor,
 	}
 
 	if clusterConfig.EnableMetricsCapture {
@@ -576,6 +586,10 @@ func (tc *TestCluster) Host() *TemporalImpl {
 
 func (tc *TestCluster) WorkerGRPCAddress() string {
 	return tc.host.WorkerGRPCAddress()
+}
+
+func (tc *TestCluster) Pitcher() pitcher.Pitcher {
+	return tc.host.GetPitcher()
 }
 
 func (tc *TestCluster) ClusterName() string {

@@ -72,6 +72,7 @@ import (
 	"go.temporal.io/server/common/sdk"
 	"go.temporal.io/server/common/searchattribute"
 	"go.temporal.io/server/common/searchattribute/sadefs"
+	"go.temporal.io/server/tools/umpire/pitcher"
 	"go.temporal.io/server/common/tasktoken"
 	"go.temporal.io/server/common/tqid"
 	"go.temporal.io/server/common/util"
@@ -147,6 +148,7 @@ type (
 		httpEnabled                     bool
 		registry                        *chasm.Registry
 		workerDeploymentReadRateLimiter quotas.RequestRateLimiter
+		hostInfoProvider                membership.HostInfoProvider
 	}
 )
 
@@ -174,6 +176,7 @@ func NewWorkflowHandler(
 	healthServer *health.Server,
 	timeSource clock.TimeSource,
 	membershipMonitor membership.Monitor,
+	hostInfoProvider membership.HostInfoProvider,
 	healthInterceptor *interceptor.HealthInterceptor,
 	scheduleSpecBuilder *scheduler.SpecBuilder,
 	httpEnabled bool,
@@ -209,6 +212,7 @@ func NewWorkflowHandler(
 		workerDeploymentClient:          workerDeploymentClient,
 		schedulerClient:                 schedulerClient,
 		archiverProvider:                archiverProvider,
+		hostInfoProvider:         hostInfoProvider,
 		payloadSerializer:               payloadSerializer,
 		namespaceRegistry:               namespaceRegistry,
 		saProvider:                      saProvider,
@@ -287,6 +291,10 @@ func (wh *WorkflowHandler) Stop() {
 		wh.healthServer.SetServingStatus(WorkflowServiceName, healthpb.HealthCheckResponse_NOT_SERVING)
 		wh.healthInterceptor.SetHealthy(false)
 	}
+}
+
+func (wh *WorkflowHandler) Identity() string {
+	return wh.hostInfoProvider.HostInfo().Identity()
 }
 
 // GetConfig return config
@@ -389,6 +397,12 @@ func (wh *WorkflowHandler) StartWorkflowExecution(
 	request *workflowservice.StartWorkflowExecutionRequest,
 ) (_ *workflowservice.StartWorkflowExecutionResponse, retError error) {
 	defer log.CapturePanic(wh.logger, &retError)
+
+	if p := pitcher.Get(); p != nil {
+		if _, err := p.MakePlay(ctx, request, request); err != nil {
+			return nil, err
+		}
+	}
 
 	var err error
 	if request, err = wh.prepareStartWorkflowRequest(request); err != nil {
@@ -2025,6 +2039,12 @@ func (wh *WorkflowHandler) RespondActivityTaskCanceledById(ctx context.Context, 
 func (wh *WorkflowHandler) RequestCancelWorkflowExecution(ctx context.Context, request *workflowservice.RequestCancelWorkflowExecutionRequest) (_ *workflowservice.RequestCancelWorkflowExecutionResponse, retError error) {
 	defer log.CapturePanic(wh.logger, &retError)
 
+	if p := pitcher.Get(); p != nil {
+		if _, err := p.MakePlay(ctx, request, request); err != nil {
+			return nil, err
+		}
+	}
+
 	if request == nil {
 		return nil, errRequestNotSet
 	}
@@ -2057,6 +2077,12 @@ func (wh *WorkflowHandler) RequestCancelWorkflowExecution(ctx context.Context, r
 // a WorkflowExecutionSignaled event recorded in the history and a workflow task being created for the execution.
 func (wh *WorkflowHandler) SignalWorkflowExecution(ctx context.Context, request *workflowservice.SignalWorkflowExecutionRequest) (_ *workflowservice.SignalWorkflowExecutionResponse, retError error) {
 	defer log.CapturePanic(wh.logger, &retError)
+
+	if p := pitcher.Get(); p != nil {
+		if _, err := p.MakePlay(ctx, request, request); err != nil {
+			return nil, err
+		}
+	}
 
 	if request == nil {
 		return nil, errRequestNotSet
@@ -2270,6 +2296,12 @@ func (wh *WorkflowHandler) ResetWorkflowExecution(ctx context.Context, request *
 // in the history and immediately terminating the execution instance.
 func (wh *WorkflowHandler) TerminateWorkflowExecution(ctx context.Context, request *workflowservice.TerminateWorkflowExecutionRequest) (_ *workflowservice.TerminateWorkflowExecutionResponse, retError error) {
 	defer log.CapturePanic(wh.logger, &retError)
+
+	if p := pitcher.Get(); p != nil {
+		if _, err := p.MakePlay(ctx, request, request); err != nil {
+			return nil, err
+		}
+	}
 
 	if request == nil {
 		return nil, errRequestNotSet
@@ -2971,6 +3003,12 @@ func (wh *WorkflowHandler) cancelOutstandingWorkerPolls(
 // QueryWorkflow returns query result for a specified workflow execution
 func (wh *WorkflowHandler) QueryWorkflow(ctx context.Context, request *workflowservice.QueryWorkflowRequest) (_ *workflowservice.QueryWorkflowResponse, retError error) {
 	defer log.CapturePanic(wh.logger, &retError)
+
+	if p := pitcher.Get(); p != nil {
+		if _, err := p.MakePlay(ctx, request, request); err != nil {
+			return nil, err
+		}
+	}
 
 	if wh.config.DisallowQuery(request.GetNamespace()) {
 		return nil, errQueryDisallowedForNamespace
