@@ -38,13 +38,13 @@ func registerCommandHandlers(
 ) error {
 	h := &commandHandler{config: config, nexusProcessor: nexusProcessor}
 
-	if err := registry.Register(
+	if err := registry.RegisterCommand(
 		enumspb.COMMAND_TYPE_SCHEDULE_NEXUS_OPERATION,
 		h.handleScheduleCommand,
 	); err != nil {
 		return err
 	}
-	return registry.Register(
+	return registry.RegisterCommand(
 		enumspb.COMMAND_TYPE_REQUEST_CANCEL_NEXUS_OPERATION,
 		h.handleCancelCommand,
 	)
