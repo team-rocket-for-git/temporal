@@ -650,7 +650,7 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationAsyncCompletion() {
 			break
 		}
 	}
-	s.Greater(wftCompletedEventID, int64(0))
+	s.Positive(wftCompletedEventID)
 
 	wfExec := &commonpb.WorkflowExecution{
 		WorkflowId: run.GetID(),
