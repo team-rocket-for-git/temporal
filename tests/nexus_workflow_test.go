@@ -315,79 +315,39 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationSyncCompletion() {
 	})
 	s.NoError(err)
 
+	callerWF := func(ctx workflow.Context) (string, error) {
+		c := workflow.NewNexusClient(endpointName, "service")
+		fut := c.ExecuteOperation(ctx, "operation", "input", workflow.NexusOperationOptions{})
+		var result string
+		err := fut.Get(ctx, &result)
+		return result, err
+	}
+
+	w := worker.New(s.SdkClient(), taskQueue, worker.Options{})
+	w.RegisterWorkflow(callerWF)
+	s.NoError(w.Start())
+	s.T().Cleanup(w.Stop)
+
 	run, err := s.SdkClient().ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		TaskQueue: taskQueue,
-	}, "workflow")
+	}, callerWF)
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
-		pollResp, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
-			Namespace: s.Namespace().String(),
-			TaskQueue: &taskqueuepb.TaskQueue{
-				Name: taskQueue,
-				Kind: enumspb.TASK_QUEUE_KIND_NORMAL,
-			},
-			Identity: "test",
-		})
-		require.NoError(t, err)
-		_, err = s.FrontendClient().RespondWorkflowTaskCompleted(ctx, &workflowservice.RespondWorkflowTaskCompletedRequest{
-			Identity:  "test",
-			TaskToken: pollResp.TaskToken,
-			Commands: []*commandpb.Command{
-				{
-					CommandType: enumspb.COMMAND_TYPE_SCHEDULE_NEXUS_OPERATION,
-					Attributes: &commandpb.Command_ScheduleNexusOperationCommandAttributes{
-						ScheduleNexusOperationCommandAttributes: &commandpb.ScheduleNexusOperationCommandAttributes{
-							Endpoint:  endpointName,
-							Service:   "service",
-							Operation: "operation",
-							Input:     testcore.MustToPayload(s.T(), "input"),
-						},
-					},
-				},
-			},
-		})
-		require.NoError(t, err)
-	}, time.Second*20, time.Millisecond*200)
-
-	pollResp, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
-		Namespace: s.Namespace().String(),
-		TaskQueue: &taskqueuepb.TaskQueue{
-			Name: taskQueue,
-			Kind: enumspb.TASK_QUEUE_KIND_NORMAL,
-		},
-		Identity: "test",
-	})
-	s.NoError(err)
-	completedEventIdx := slices.IndexFunc(pollResp.History.Events, func(e *historypb.HistoryEvent) bool {
-		return e.GetNexusOperationCompletedEventAttributes() != nil
-	})
-	s.Greater(completedEventIdx, 0)
-	s.Len(pollResp.History.Events[completedEventIdx].GetLinks(), 1)
-	protorequire.ProtoEqual(s.T(), handlerLink, pollResp.History.Events[completedEventIdx].GetLinks()[0].GetWorkflowEvent())
-
-	_, err = s.FrontendClient().RespondWorkflowTaskCompleted(ctx, &workflowservice.RespondWorkflowTaskCompletedRequest{
-		Identity:  "test",
-		TaskToken: pollResp.TaskToken,
-		Commands: []*commandpb.Command{
-			{
-				CommandType: enumspb.COMMAND_TYPE_COMPLETE_WORKFLOW_EXECUTION,
-				Attributes: &commandpb.Command_CompleteWorkflowExecutionCommandAttributes{
-					CompleteWorkflowExecutionCommandAttributes: &commandpb.CompleteWorkflowExecutionCommandAttributes{
-						Result: &commonpb.Payloads{
-							Payloads: []*commonpb.Payload{
-								pollResp.History.Events[completedEventIdx].GetNexusOperationCompletedEventAttributes().Result,
-							},
-						},
-					},
-				},
-			},
-		},
-	})
-	s.NoError(err)
 	var result string
 	s.NoError(run.Get(ctx, &result))
 	s.Equal("result", result)
+
+	// Verify the completed event has the expected link.
+	history := s.SdkClient().GetWorkflowHistory(ctx, run.GetID(), "", false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	for history.HasNext() {
+		ev, err := history.Next()
+		s.NoError(err)
+		if ev.GetNexusOperationCompletedEventAttributes() != nil {
+			s.Len(ev.GetLinks(), 1)
+			protorequire.ProtoEqual(s.T(), handlerLink, ev.GetLinks()[0].GetWorkflowEvent())
+			break
+		}
+	}
 
 	// Use this test case to verify that the state machine is actually deleted, the workflowservice
 	// DescribeWorkflowExecution API filters out operations in terminal state in case they complete in a server version
