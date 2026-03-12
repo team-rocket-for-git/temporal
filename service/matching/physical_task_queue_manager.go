@@ -11,6 +11,7 @@ import (
 
 	"github.com/nexus-rpc/sdk-go/nexus"
 	enumspb "go.temporal.io/api/enums/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"go.temporal.io/api/serviceerror"
 	taskqueuepb "go.temporal.io/api/taskqueue/v1"
 	"go.temporal.io/api/workflowservice/v1"
@@ -946,5 +947,9 @@ func (c *physicalTaskQueueManagerImpl) getOrCreateTaskTracker(
 }
 
 func aggregateStats(stats map[int32]*taskqueuepb.TaskQueueStats) *taskqueuepb.TaskQueueStats {
-	return taskqueue.AggregateStats(stats)
+	result := &taskqueuepb.TaskQueueStats{ApproximateBacklogAge: durationpb.New(0)}
+	for _, s := range stats {
+		taskqueue.MergeStats(result, s)
+	}
+	return result
 }
