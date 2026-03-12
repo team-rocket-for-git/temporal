@@ -6,7 +6,7 @@ import (
 )
 
 var Module = fx.Module(
-	"chasm.lib.nexusoperations",
+	"chasm.lib.nexusoperation",
 	fx.Provide(configProvider),
 	fx.Provide(NewOperationInvocationTaskExecutor),
 	fx.Provide(NewOperationBackoffTaskExecutor),
@@ -17,6 +17,11 @@ var Module = fx.Module(
 	fx.Provide(NewCancellationBackoffTaskExecutor),
 	fx.Provide(newLibrary),
 	fx.Invoke(register),
+)
+
+var FrontendModule = fx.Module(
+	"chasm.lib.nexusoperation.frontend",
+	fx.Provide(NewFrontendHandler),
 )
 
 func register(
