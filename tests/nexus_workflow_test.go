@@ -2005,39 +2005,19 @@ func (s *NexusWorkflowTestSuite) TestNexusAsyncOperationWithNilIO() {
 	}
 
 	w.RegisterNexusService(svc)
-	w.RegisterWorkflow(wf)
 	w.RegisterWorkflow(callerWF)
-	w.Start()
-	defer w.Stop()
+	s.NoError(w.Start())
+	s.T().Cleanup(w.Stop)
+
+	// Register the handler workflow on a separate worker listening on the handler task queue.
+	handlerWorker := worker.New(s.SdkClient(), handlerWorkflowTaskQueue, worker.Options{})
+	handlerWorker.RegisterWorkflow(wf)
+	s.NoError(handlerWorker.Start())
+	s.T().Cleanup(handlerWorker.Stop)
 
 	run, err := s.SdkClient().ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		TaskQueue: callerTaskQueue,
 	}, callerWF, nil)
-	s.NoError(err)
-
-	pollRes, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
-		Namespace: s.Namespace().String(),
-		TaskQueue: &taskqueuepb.TaskQueue{
-			Name: handlerWorkflowTaskQueue,
-		},
-		Identity: "test",
-	})
-	s.NoError(err)
-	_, err = s.FrontendClient().RespondWorkflowTaskCompleted(ctx, &workflowservice.RespondWorkflowTaskCompletedRequest{
-		Namespace: s.Namespace().String(),
-		TaskToken: pollRes.TaskToken,
-		Identity:  "test",
-		Commands: []*commandpb.Command{
-			{
-				CommandType: enumspb.COMMAND_TYPE_COMPLETE_WORKFLOW_EXECUTION,
-				Attributes: &commandpb.Command_CompleteWorkflowExecutionCommandAttributes{
-					CompleteWorkflowExecutionCommandAttributes: &commandpb.CompleteWorkflowExecutionCommandAttributes{
-						Result: nil, // Return nil here to verify that the conversion to nexus content works as expected.
-					},
-				},
-			},
-		},
-	})
 	s.NoError(err)
 
 	s.NoError(run.Get(ctx, nil))
