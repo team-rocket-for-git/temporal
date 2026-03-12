@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
@@ -20,6 +19,7 @@ import (
 	sdkclient "go.temporal.io/sdk/client"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/util"
 	"go.temporal.io/server/components/nexusoperations"
 	"go.temporal.io/server/tests/testcore"
@@ -80,7 +80,7 @@ func (s *PollerScalingIntegSuite) TestPollerScalingSimpleBacklog() {
 	// Poll for a task and see attached decision is to scale up b/c of backlog
 	feClient := s.FrontendClient()
 	// This needs to be done in an eventually loop because nexus endpoints don't become available immediately...
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := feClient.PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
 			Namespace: s.Namespace().String(),
 			TaskQueue: &taskqueuepb.TaskQueue{Name: tq, Kind: enumspb.TASK_QUEUE_KIND_NORMAL},
@@ -125,7 +125,7 @@ func (s *PollerScalingIntegSuite) TestPollerScalingSimpleBacklog() {
 
 	// Wait to ensure add rate exceeds dispatch rate & backlog age grows
 	tqtyp := enumspb.TASK_QUEUE_TYPE_ACTIVITY
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		res, err := feClient.DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
 			Namespace:      s.Namespace().String(),
 			TaskQueue:      &taskqueuepb.TaskQueue{Name: tq},
@@ -300,7 +300,7 @@ func (s *PollerScalingIntegSuite) testPollerScalingOnPromotedVersionConsidersUnv
 	}()
 
 	// This needs to be done in an eventually loop since version existence in the server is eventually consistent.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		a := require.New(t)
 
 		// Verify the version status is Inactive and has been registered due to a poller.
@@ -376,7 +376,7 @@ func (s *PollerScalingIntegSuite) testPollerScalingOnPromotedVersionConsidersUnv
 
 	// Wait to ensure add rate exceeds dispatch rate & backlog age grows.
 	tqtyp := enumspb.TASK_QUEUE_TYPE_ACTIVITY
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		a := require.New(t)
 		res, err := feClient.DescribeTaskQueue(ctx, &workflowservice.DescribeTaskQueueRequest{
 			Namespace:     s.Namespace().String(),

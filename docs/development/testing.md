@@ -32,6 +32,22 @@ To pass in the required build tags, add them to the "Go tool arguments" field in
 
 ## Best Practices
 
+### Polling with eventually.Require
+
+For polling/retry loops in tests, use `eventually.Require` (or `eventually.Requiref`)
+from `common/testing/eventually` instead of testify's `EventuallyWithT` or `Eventually`.
+
+```go
+eventually.Require(t, func(t *eventually.T) {
+    resp, err := client.GetStatus(ctx)
+    require.NoError(t, err)
+    require.Equal(t, "ready", resp.Status)
+}, 5*time.Second, 200*time.Millisecond)
+```
+
+Make sure to use the `t` provided by the callback!
+Use `Requiref` when you want a message on timeout.
+
 ### Parallelization
 
 All tests (and subtests!) should use `t.Parallel()` to be run concurrently;
@@ -71,7 +87,7 @@ func TestFoo(t *testing.T) {
 Later you can assert on the generated values. `testvars` guarantees to provide the same value every time you call the same method. 
 
 ```go
-assert.Equal(t, tv.WorkflowID(), startedWorkflow.WorkflowId)
+require.Equal(t, tv.WorkflowID(), startedWorkflow.WorkflowId)
 ```
 
 If you need more than one value for the same entity in one test, you can use `WithEntityNumber()` method to

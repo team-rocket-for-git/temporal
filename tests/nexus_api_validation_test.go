@@ -19,6 +19,7 @@ import (
 	"go.temporal.io/server/common/authorization"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/nexus/nexusrpc"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/service/frontend/configs"
 	"go.temporal.io/server/tests/testcore"
 )
@@ -190,10 +191,10 @@ func (s *NexusAPIValidationTestSuite) TestNexusStartOperation_Forbidden() {
 		s.OverrideDynamicConfig(dynamicconfig.ExposeAuthorizerErrors, tc.exposeAuthorizerErrors)
 
 		// Wait until the endpoint is loaded into the registry.
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			_, err = nexusrpc.StartOperation(ctx, client, op, "input", nexus.StartOperationOptions{})
 			var handlerErr *nexus.HandlerError
-			return err == nil || (!errors.As(err, &handlerErr) || handlerErr.Type != nexus.HandlerErrorTypeNotFound)
+			require.True(t, err == nil || (!errors.As(err, &handlerErr) || handlerErr.Type != nexus.HandlerErrorTypeNotFound))
 		}, 10*time.Second, 1*time.Second)
 
 		var handlerErr *nexus.HandlerError
@@ -242,13 +243,13 @@ func (s *NexusAPIValidationTestSuite) TestNexusStartOperation_PayloadSizeLimit()
 		var result *nexusrpc.ClientStartOperationResponse[string]
 
 		// Wait until the endpoint is loaded into the registry.
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			result, err = nexusrpc.StartOperation(ctx, client, op, input, nexus.StartOperationOptions{
 				CallbackURL: "http://localhost/callback",
 				RequestID:   "request-id",
 			})
 			var handlerErr *nexus.HandlerError
-			return err == nil || (!errors.As(err, &handlerErr) || handlerErr.Type != nexus.HandlerErrorTypeNotFound)
+			require.True(t, err == nil || (!errors.As(err, &handlerErr) || handlerErr.Type != nexus.HandlerErrorTypeNotFound))
 		}, 10*time.Second, 500*time.Millisecond)
 
 		require.Nil(t, result)

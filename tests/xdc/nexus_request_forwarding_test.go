@@ -33,6 +33,7 @@ import (
 	"go.temporal.io/server/common/nexus/nexusrpc"
 	"go.temporal.io/server/common/nexus/nexustest"
 	"go.temporal.io/server/common/payload"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/components/nexusoperations"
 	"go.temporal.io/server/tests/testcore"
 )
@@ -584,7 +585,7 @@ func (s *NexusRequestForwardingSuite) TestOperationCompletionForwardedFromStandb
 			s.Greater(startedEventIdx, 0)
 
 			// Wait for Nexus operation to be replicated
-			s.Eventually(func() bool {
+			s.Eventually(func(t *eventually.T) {
 				resp, err := feClient1.DescribeWorkflowExecution(ctx, &workflowservice.DescribeWorkflowExecutionRequest{
 					Namespace: ns,
 					Execution: &commonpb.WorkflowExecution{
@@ -592,7 +593,8 @@ func (s *NexusRequestForwardingSuite) TestOperationCompletionForwardedFromStandb
 						RunId:      run.GetRunID(),
 					},
 				})
-				return err == nil && len(resp.PendingNexusOperations) > 0
+				require.NoError(t, err)
+				require.NotEmpty(t, resp.PendingNexusOperations)
 			}, 5*time.Second, 500*time.Millisecond)
 
 			completion := tc.getCompletionFn()

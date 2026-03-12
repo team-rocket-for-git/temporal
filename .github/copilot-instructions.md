@@ -23,10 +23,10 @@ Apply these patterns when reviewing PRs or suggesting code changes.
 
 - Never use `s.T()` in subtests - use the subtest's `t` parameter
 - Never use suite assertion methods (`s.NoError`, `s.Equal`) from goroutines - causes panics
-- Use `EventuallyWithT` when you need assertions inside eventually blocks, and use that block's `t`
+- Always use `require`, never `assert` - the `assert` package is blocked by depguard
+- Use `eventually.Require` (from `common/testing/eventually`) for polling/retry loops, not testify's `EventuallyWithT` or `Eventually` (blocked by lint)
 - Use `require.ErrorAs(t, err, &specificErr)` for specific error type checks
-- Prefer `require` over `assert` - it's rarely useful to continue a test after a failed assertion
-- Add comments explaining why `Eventually` is needed (e.g., eventual consistency)
+- Add comments explaining why `eventually.Require` is needed (e.g., eventual consistency)
 
 ## 4. Inline Code / Avoid Abstractions
 

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/api/serviceerror"
@@ -14,6 +13,7 @@ import (
 	workerpb "go.temporal.io/api/worker/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/server/common/dynamicconfig"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
 )
@@ -313,7 +313,7 @@ func (s *WorkerRegistryTestSuite) TestWorkerRegistry_SendHeartbeatViaPollNexusTa
 	}()
 
 	// Verify heartbeat was registered.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventuallyf(func(t *eventually.T) {
 		resp, err := s.FrontendClient().ListWorkers(ctx, &workflowservice.ListWorkersRequest{
 			Namespace: s.Namespace().String(),
 			Query:     fmt.Sprintf("WorkerInstanceKey='%s'", nexusWorkerKey),

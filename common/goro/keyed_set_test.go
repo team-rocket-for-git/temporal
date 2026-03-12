@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/server/common/goro"
+	"go.temporal.io/server/common/testing/eventually"
 )
 
 func TestKeyedSet_Starts(t *testing.T) {
@@ -87,20 +87,20 @@ func TestKeyedSet_StartsAndCancelsTogether(t *testing.T) {
 
 	// Start with {"a", "b"}
 	ks.Sync(map[string]struct{}{"a": {}, "b": {}}, f)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.ElementsMatch(c, []string{"a", "b"}, runningKeys())
+	eventually.Require(t, func(t *eventually.T) {
+		require.ElementsMatch(t, []string{"a", "b"}, runningKeys())
 	}, time.Second, time.Millisecond)
 
 	// Change to {"b", "c"} - should cancel "a", keep "b", start "c"
 	ks.Sync(map[string]struct{}{"b": {}, "c": {}}, f)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.ElementsMatch(c, []string{"b", "c"}, runningKeys())
+	eventually.Require(t, func(t *eventually.T) {
+		require.ElementsMatch(t, []string{"b", "c"}, runningKeys())
 	}, time.Second, time.Millisecond)
 
 	// Cancel all
 	ks.Sync(nil, nil)
-	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		assert.Empty(c, runningKeys())
+	eventually.Require(t, func(t *eventually.T) {
+		require.Empty(t, runningKeys())
 	}, time.Second, time.Millisecond)
 }
 

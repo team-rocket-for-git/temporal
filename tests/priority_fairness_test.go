@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	activitypb "go.temporal.io/api/activity/v1"
@@ -25,6 +24,7 @@ import (
 	"go.temporal.io/server/common/metrics"
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/serviceerror"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/taskpoller"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
@@ -115,7 +115,7 @@ func (s *PrioritySuite) TestActivity_Basic() {
 	}
 
 	// wait for activity tasks to appear in the matching backlog (from transfer queue)
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		res, err := s.AdminClient().DescribeTaskQueuePartition(ctx, &adminservice.DescribeTaskQueuePartitionRequest{
 			Namespace: s.Namespace().String(),
 			TaskQueuePartition: &taskqueuespb.TaskQueuePartition{
@@ -125,16 +125,14 @@ func (s *PrioritySuite) TestActivity_Basic() {
 			},
 			BuildIds: &taskqueuepb.TaskQueueVersionSelection{Unversioned: true},
 		})
-		if err != nil {
-			return false
-		}
+		require.NoError(t, err)
 		var count int64
 		for _, versionInfoInternal := range res.VersionsInfoInternal {
 			for _, st := range versionInfoInternal.PhysicalTaskQueueInfo.InternalTaskQueueStatus {
 				count += st.ApproximateBacklogCount
 			}
 		}
-		return count == N*Levels
+		require.Equal(t, int64(N*Levels), count)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// process activity tasks
@@ -215,17 +213,17 @@ func (s *PrioritySuite) TestSubqueue_Migration() {
 	}
 
 	processActivity := func() {
-		s.EventuallyWithT(func(c *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			_, err := s.TaskPoller().PollAndHandleActivityTask(
 				tv,
 				func(task *workflowservice.PollActivityTaskQueueResponse) (*workflowservice.RespondActivityTaskCompletedRequest, error) {
 					nothing, err := payloads.Encode()
-					s.NoError(err)
+					require.NoError(t, err)
 					return &workflowservice.RespondActivityTaskCompletedRequest{Result: nothing}, nil
 				},
 				taskpoller.WithContext(ctx),
 			)
-			assert.NoError(c, err)
+			require.NoError(t, err)
 		}, 5*time.Second, time.Millisecond)
 	}
 
@@ -291,10 +289,10 @@ func (s *PrioritySuite) TestStickyInteraction_SinglePartition() {
 	stickyCtx, stickyCancel := context.WithCancel(ctx)
 	go stickyPoller.HandleTask(tv, taskpoller.DrainWorkflowTask, taskpoller.WithContext(stickyCtx)) // nolint:errcheck
 	// wait for poll to reach matching service and load the queue
-	s.EventuallyWithT(func(c *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		res, err := describeSticky()
-		require.NoError(c, err)
-		require.NotEmpty(c, res.VersionsInfoInternal[""].GetPhysicalTaskQueueInfo().GetPollers())
+		require.NoError(t, err)
+		require.NotEmpty(t, res.VersionsInfoInternal[""].GetPhysicalTaskQueueInfo().GetPollers())
 	}, 5*time.Second, 10*time.Millisecond)
 	// cancel as soon as it's registered
 	s.T().Log("canceling sticky poll")
@@ -343,10 +341,10 @@ func (s *PrioritySuite) TestStickyInteraction_SinglePartition() {
 
 	// after 1 millisecond, we should have N tasks queued on the sticky queue at normal priority
 	s.T().Log("checking sticky backlog")
-	s.EventuallyWithT(func(c *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		res, err := describeSticky()
-		require.NoError(c, err)
-		require.EqualValues(c, N, res.VersionsInfoInternal[""].PhysicalTaskQueueInfo.TaskQueueStats.ApproximateBacklogCount)
+		require.NoError(t, err)
+		require.EqualValues(t, N, res.VersionsInfoInternal[""].PhysicalTaskQueueInfo.TaskQueueStats.ApproximateBacklogCount)
 	}, 5*time.Second, 10*time.Millisecond)
 
 	// create N more workflows at high priority and N at lower
@@ -472,7 +470,7 @@ func (s *FairnessSuite) TriggerAutoEnable(tv *testvars.TestVars) {
 	})
 	s.Require().NoError(err)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.AdminClient().GetTaskQueueTasks(ctx, &adminservice.GetTaskQueueTasksRequest{
 			Namespace:     s.Namespace().String(),
 			TaskQueue:     tv.TaskQueue().Name,
@@ -480,7 +478,8 @@ func (s *FairnessSuite) TriggerAutoEnable(tv *testvars.TestVars) {
 			BatchSize:     10,
 			MinPass:       1,
 		})
-		return err == nil && len(resp.GetTasks()) == 1
+		require.NoError(t, err)
+		require.Len(t, resp.GetTasks(), 1)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	_, err = s.TaskPoller().PollAndHandleWorkflowTask(tv,
@@ -661,19 +660,19 @@ func (s *FairnessSuite) testMigration(newMatcher, fairness bool) {
 	}
 	waitForTasks := func(tp enumspb.TaskQueueType, onDraining, onActive int64) {
 		s.T().Helper()
-		s.EventuallyWithT(func(c *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			tasksOnDraining, tasksOnActive, _, err := s.countTasksByDrainingActive(ctx, tv, tp)
-			require.NoError(c, err)
-			require.Equal(c, onDraining, tasksOnDraining)
-			require.Equal(c, onActive, tasksOnActive)
+			require.NoError(t, err)
+			require.Equal(t, onDraining, tasksOnDraining)
+			require.Equal(t, onActive, tasksOnActive)
 		}, 15*time.Second, 250*time.Millisecond)
 	}
 	waitForNoDraining := func(tp enumspb.TaskQueueType) {
 		s.T().Helper()
-		s.EventuallyWithT(func(c *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			_, _, hasDraining, err := s.countTasksByDrainingActive(ctx, tv, tp)
-			require.NoError(c, err)
-			require.False(c, hasDraining, "draining queue should be unloaded after drain completes")
+			require.NoError(t, err)
+			require.False(t, hasDraining, "draining queue should be unloaded after drain completes")
 		}, 15*time.Second, 250*time.Millisecond)
 	}
 
@@ -693,17 +692,17 @@ func (s *FairnessSuite) testMigration(newMatcher, fairness bool) {
 	waitForTasks(enumspb.TASK_QUEUE_TYPE_WORKFLOW, 0, 20)
 
 	processWft := func() {
-		s.EventuallyWithT(func(c *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			_, err := s.TaskPoller().PollAndHandleWorkflowTask(
 				tv,
 				func(task *workflowservice.PollWorkflowTaskQueueResponse) (*workflowservice.RespondWorkflowTaskCompletedRequest, error) {
-					s.Len(task.History.Events, 3)
+					require.Len(t, task.History.Events, 3)
 
 					var commands []*commandpb.Command
 
 					for i := range 2 {
 						input, err := payloads.Encode(i)
-						s.NoError(err)
+						require.NoError(t, err)
 						commands = append(commands, &commandpb.Command{
 							CommandType: enumspb.COMMAND_TYPE_SCHEDULE_ACTIVITY_TASK,
 							Attributes: &commandpb.Command_ScheduleActivityTaskCommandAttributes{
@@ -722,7 +721,7 @@ func (s *FairnessSuite) testMigration(newMatcher, fairness bool) {
 				},
 				taskpoller.WithContext(ctx),
 			)
-			assert.NoError(c, err)
+			require.NoError(t, err)
 		}, 5*time.Second, time.Millisecond)
 	}
 
@@ -760,17 +759,17 @@ func (s *FairnessSuite) testMigration(newMatcher, fairness bool) {
 
 	// process activities 1/3 at a time
 	processActivity := func() {
-		s.EventuallyWithT(func(c *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			_, err := s.TaskPoller().PollAndHandleActivityTask(
 				tv,
 				func(task *workflowservice.PollActivityTaskQueueResponse) (*workflowservice.RespondActivityTaskCompletedRequest, error) {
 					nothing, err := payloads.Encode()
-					s.NoError(err)
+					require.NoError(t, err)
 					return &workflowservice.RespondActivityTaskCompletedRequest{Result: nothing}, nil
 				},
 				taskpoller.WithContext(ctx),
 			)
-			assert.NoError(c, err)
+			require.NoError(t, err)
 		}, 5*time.Second, time.Millisecond)
 	}
 
@@ -871,7 +870,7 @@ func (s *FairnessSuite) TestUpdateWorkflowExecutionOptions_InvalidatesPendingTas
 	s.NoError(err)
 
 	// Wait for workflow task to be backlogged.
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.AdminClient().GetTaskQueueTasks(ctx, &adminservice.GetTaskQueueTasksRequest{
 			Namespace:     s.Namespace().String(),
 			TaskQueue:     tv.TaskQueue().Name,
@@ -879,7 +878,8 @@ func (s *FairnessSuite) TestUpdateWorkflowExecutionOptions_InvalidatesPendingTas
 			BatchSize:     10,
 			MinPass:       1,
 		})
-		return err == nil && len(resp.GetTasks()) == 1
+		require.NoError(t, err)
+		require.Len(t, resp.GetTasks(), 1)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Update workflow options to set a new priority.
@@ -964,7 +964,7 @@ func (s *FairnessSuite) TestUpdateWorkflowExecutionOptions_InvalidatesPendingTas
 	s.Equal(1, obsoleteWorkflowTaskCount, "Expected 1 workflow task to be obsolete")
 
 	// Wait for activity task to be backlogged
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.AdminClient().GetTaskQueueTasks(ctx, &adminservice.GetTaskQueueTasksRequest{
 			Namespace:     s.Namespace().String(),
 			TaskQueue:     tv.TaskQueue().Name,
@@ -972,7 +972,8 @@ func (s *FairnessSuite) TestUpdateWorkflowExecutionOptions_InvalidatesPendingTas
 			BatchSize:     10,
 			MinPass:       1,
 		})
-		return err == nil && len(resp.GetTasks()) == 1
+		require.NoError(t, err)
+		require.Len(t, resp.GetTasks(), 1)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Update activity options to set a new priority

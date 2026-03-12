@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -14,6 +15,7 @@ import (
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log/tag"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
 )
@@ -95,7 +97,7 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_CompetedWorkf
 	// Verify that workflow is completed and visibility is updated.
 	for _, we := range wes {
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				visibilityResponse, err := s.FrontendClient().ListWorkflowExecutions(
 					testcore.NewContext(),
 					&workflowservice.ListWorkflowExecutionsRequest{
@@ -105,12 +107,9 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_CompetedWorkf
 						Query:         fmt.Sprintf("WorkflowId='%s'", we.WorkflowId),
 					},
 				)
-				s.NoError(err)
-				if len(visibilityResponse.Executions) == 1 &&
-					visibilityResponse.Executions[0].Status == enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED {
-					return true
-				}
-				return false
+				require.NoError(t, err)
+				require.Len(t, visibilityResponse.Executions, 1)
+				require.Equal(t, enumspb.WORKFLOW_EXECUTION_STATUS_COMPLETED, visibilityResponse.Executions[0].Status)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -129,9 +128,9 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_CompetedWorkf
 		s.NoError(err)
 	}
 
-	for i, we := range wes {
+	for _, we := range wes {
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				// Check execution is deleted.
 				describeResponse, err := s.FrontendClient().DescribeWorkflowExecution(
 					testcore.NewContext(),
@@ -140,14 +139,10 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_CompetedWorkf
 						Execution: we,
 					},
 				)
-				if err == nil {
-					s.Logger.Warn("Execution is not deleted yet", tag.Int("number", i), tag.WorkflowID(we.WorkflowId), tag.WorkflowRunID(we.RunId))
-					return false
-				}
+				require.Error(t, err)
 				var notFoundErr *serviceerror.NotFound
-				s.ErrorAs(err, &notFoundErr)
-				s.Nil(describeResponse)
-				return true
+				require.ErrorAs(t, err, &notFoundErr)
+				require.Nil(t, describeResponse)
 			},
 			waitForTaskProcessing,
 			100*time.Millisecond,
@@ -166,7 +161,7 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_CompetedWorkf
 		s.Nil(historyResponse)
 
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				// Check visibility is updated.
 				visibilityResponse, err := s.FrontendClient().ListWorkflowExecutions(
 					testcore.NewContext(),
@@ -177,12 +172,8 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_CompetedWorkf
 						Query:         fmt.Sprintf("WorkflowId='%s'", we.WorkflowId),
 					},
 				)
-				s.NoError(err)
-				if len(visibilityResponse.Executions) != 0 {
-					s.Logger.Warn("Visibility is not deleted yet")
-					return false
-				}
-				return true
+				require.NoError(t, err)
+				require.Empty(t, visibilityResponse.Executions)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -216,7 +207,7 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_RunningWorkfl
 	// Verify that workflow is running and visibility is updated.
 	for _, we := range wes {
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				visibilityResponse, err := s.FrontendClient().ListWorkflowExecutions(
 					testcore.NewContext(),
 					&workflowservice.ListWorkflowExecutionsRequest{
@@ -226,9 +217,9 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_RunningWorkfl
 						Query:         fmt.Sprintf("WorkflowId='%s'", we.WorkflowId),
 					},
 				)
-				s.NoError(err)
-				return len(visibilityResponse.Executions) == 1 &&
-					visibilityResponse.Executions[0].Status == enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING
+				require.NoError(t, err)
+				require.Len(t, visibilityResponse.Executions, 1)
+				require.Equal(t, enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING, visibilityResponse.Executions[0].Status)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -244,9 +235,9 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_RunningWorkfl
 		s.NoError(err)
 	}
 
-	for i, we := range wes {
+	for _, we := range wes {
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				// Check execution is deleted.
 				describeResponse, err := s.FrontendClient().DescribeWorkflowExecution(
 					testcore.NewContext(),
@@ -255,14 +246,10 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_RunningWorkfl
 						Execution: we,
 					},
 				)
-				if err == nil {
-					s.Logger.Warn("Execution is not deleted yet", tag.Int("number", i), tag.WorkflowID(we.WorkflowId), tag.WorkflowRunID(we.RunId))
-					return false
-				}
+				require.Error(t, err)
 				var notFoundErr *serviceerror.NotFound
-				s.ErrorAs(err, &notFoundErr)
-				s.Nil(describeResponse)
-				return true
+				require.ErrorAs(t, err, &notFoundErr)
+				require.Nil(t, describeResponse)
 			},
 			waitForTaskProcessing,
 			100*time.Millisecond,
@@ -281,7 +268,7 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_RunningWorkfl
 		s.Nil(historyResponse)
 
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				// Check visibility is updated.
 				visibilityResponse, err := s.FrontendClient().ListWorkflowExecutions(
 					testcore.NewContext(),
@@ -292,12 +279,8 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_RunningWorkfl
 						Query:         fmt.Sprintf("WorkflowId='%s'", we.WorkflowId),
 					},
 				)
-				s.NoError(err)
-				if len(visibilityResponse.Executions) != 0 {
-					s.Logger.Warn("Visibility is not deleted yet")
-					return false
-				}
-				return true
+				require.NoError(t, err)
+				require.Empty(t, visibilityResponse.Executions)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -331,7 +314,7 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_JustTerminate
 	// Verify that workflow is running and visibility is updated.
 	for _, we := range wes {
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				visibilityResponse, err := s.FrontendClient().ListWorkflowExecutions(
 					testcore.NewContext(),
 					&workflowservice.ListWorkflowExecutionsRequest{
@@ -341,9 +324,9 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_JustTerminate
 						Query:         fmt.Sprintf("WorkflowId='%s'", we.WorkflowId),
 					},
 				)
-				s.NoError(err)
-				return len(visibilityResponse.Executions) == 1 &&
-					visibilityResponse.Executions[0].Status == enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING
+				require.NoError(t, err)
+				require.Len(t, visibilityResponse.Executions, 1)
+				require.Equal(t, enumspb.WORKFLOW_EXECUTION_STATUS_RUNNING, visibilityResponse.Executions[0].Status)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -373,9 +356,9 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_JustTerminate
 		s.Logger.Warn("Execution is scheduled for deletion", tag.Int("number", i), tag.WorkflowID(we.WorkflowId), tag.WorkflowRunID(we.RunId))
 	}
 
-	for i, we := range wes {
+	for _, we := range wes {
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				// Check execution is deleted.
 				describeResponse, err := s.FrontendClient().DescribeWorkflowExecution(
 					testcore.NewContext(),
@@ -384,14 +367,10 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_JustTerminate
 						Execution: we,
 					},
 				)
-				if err == nil {
-					s.Logger.Warn("Execution is not deleted yet", tag.Int("number", i), tag.WorkflowID(we.WorkflowId), tag.WorkflowRunID(we.RunId))
-					return false
-				}
+				require.Error(t, err)
 				var notFoundErr *serviceerror.NotFound
-				s.ErrorAs(err, &notFoundErr)
-				s.Nil(describeResponse)
-				return true
+				require.ErrorAs(t, err, &notFoundErr)
+				require.Nil(t, describeResponse)
 			},
 			waitForTaskProcessing,
 			1*time.Second,
@@ -410,7 +389,7 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_JustTerminate
 		s.Nil(historyResponse)
 
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				// Check visibility is updated.
 				visibilityResponse, err := s.FrontendClient().ListWorkflowExecutions(
 					testcore.NewContext(),
@@ -421,12 +400,8 @@ func (s *WorkflowDeleteExecutionSuite) TestDeleteWorkflowExecution_JustTerminate
 						Query:         fmt.Sprintf("WorkflowId='%s'", we.WorkflowId),
 					},
 				)
-				s.NoError(err)
-				if len(visibilityResponse.Executions) != 0 {
-					s.Logger.Warn("Visibility is not deleted yet", tag.Int("number", i), tag.WorkflowID(we.WorkflowId), tag.WorkflowRunID(we.RunId))
-					return false
-				}
-				return true
+				require.NoError(t, err)
+				require.Empty(t, visibilityResponse.Executions)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,

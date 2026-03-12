@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -33,6 +34,7 @@ import (
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/primitives"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/service/worker/migration"
 	"go.temporal.io/server/tests/testcore"
 	"go.uber.org/fx"
@@ -1729,9 +1731,9 @@ func (s *FunctionalClustersTestSuite) waitForNewRunToStart(
 	execution *commonpb.WorkflowExecution,
 ) string {
 	var newRunID string
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		newRunID = s.getNewExecutionRunIdFromLastEvent(client, namespace, execution)
-		return newRunID != ""
+		require.NotEmpty(t, newRunID)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	s.NotEmpty(newRunID, "New run should have started")
@@ -2779,16 +2781,13 @@ func (s *FunctionalClustersWithRedirectionTestSuite) TestActivityMultipleHeartbe
 
 	// Validate heartbeat1 is visible before failover (eventually)
 	var hbVal int
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		desc0, err := client0.DescribeWorkflowExecution(testcore.NewContext(), workflowID, "")
-		if err != nil || len(desc0.GetPendingActivities()) != 1 {
-			return false
-		}
+		require.NoError(t, err)
+		require.Len(t, desc0.GetPendingActivities(), 1)
 		hbVal = 0
-		if err := payloads.Decode(desc0.PendingActivities[0].GetHeartbeatDetails(), &hbVal); err != nil {
-			return false
-		}
-		return hbVal == hb1Val
+		require.NoError(t, payloads.Decode(desc0.PendingActivities[0].GetHeartbeatDetails(), &hbVal))
+		require.Equal(t, hb1Val, hbVal)
 	}, 10*time.Second, 200*time.Millisecond)
 
 	s.failover(namespace, 0, s.clusters[1].ClusterName(), 2)
@@ -2803,16 +2802,13 @@ func (s *FunctionalClustersWithRedirectionTestSuite) TestActivityMultipleHeartbe
 	<-hb3Ch
 
 	// Validate latest heartbeat is visible in new active cluster (eventually)
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		desc1, err := client0.DescribeWorkflowExecution(testcore.NewContext(), workflowID, "")
-		if err != nil || len(desc1.GetPendingActivities()) != 1 {
-			return false
-		}
+		require.NoError(t, err)
+		require.Len(t, desc1.GetPendingActivities(), 1)
 		hbVal = 0
-		if err := payloads.Decode(desc1.PendingActivities[0].GetHeartbeatDetails(), &hbVal); err != nil {
-			return false
-		}
-		return hbVal == hb3Val
+		require.NoError(t, payloads.Decode(desc1.PendingActivities[0].GetHeartbeatDetails(), &hbVal))
+		require.Equal(t, hb3Val, hbVal)
 	}, 10*time.Second, 200*time.Millisecond)
 
 	// Complete the activity and workflow

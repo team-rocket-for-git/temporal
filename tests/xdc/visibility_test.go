@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -20,6 +21,7 @@ import (
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/searchattribute/sadefs"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/worker_versioning"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -69,7 +71,7 @@ func (s *VisibilityTestSuite) TestSearchAttributes() {
 	ns := s.createGlobalNamespace()
 	if testcore.UseSQLVisibility() {
 		// When Elasticsearch is enabled, the search attribute aliases are not used.
-		updateNamespaceConfig(s.Assertions, ns,
+		updateNamespaceConfig(s.T(), s.Assertions, ns,
 			func() *namespacepb.NamespaceConfig {
 				return &namespacepb.NamespaceConfig{
 					CustomSearchAttributeAliases: map[string]string{
@@ -130,16 +132,13 @@ func (s *VisibilityTestSuite) TestSearchAttributes() {
 	testListResult := func(client workflowservice.WorkflowServiceClient, lr *workflowservice.ListWorkflowExecutionsRequest) {
 		var openExecution *workflowpb.WorkflowExecutionInfo
 
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			startFilter.LatestTime = timestamppb.New(time.Now().UTC())
 
 			resp, err := client.ListWorkflowExecutions(testcore.NewContext(), lr)
-			s.NoError(err)
-			if len(resp.GetExecutions()) == 1 {
-				openExecution = resp.GetExecutions()[0]
-				return true
-			}
-			return false
+			require.NoError(t, err)
+			require.Len(t, resp.GetExecutions(), 1)
+			openExecution = resp.GetExecutions()[0]
 		}, 20*time.Second, 100*time.Millisecond)
 		s.NotNil(openExecution)
 		s.Equal(we.GetRunId(), openExecution.GetExecution().GetRunId())
@@ -185,34 +184,28 @@ func (s *VisibilityTestSuite) TestSearchAttributes() {
 	s.NoError(err)
 
 	testListResult = func(client workflowservice.WorkflowServiceClient, lr *workflowservice.ListWorkflowExecutionsRequest) {
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			resp, err := client.ListWorkflowExecutions(testcore.NewContext(), lr)
-			s.NoError(err)
-			if len(resp.GetExecutions()) != 1 {
-				return false
-			}
+			require.NoError(t, err)
+			require.Len(t, resp.GetExecutions(), 1)
 			fields := resp.GetExecutions()[0].SearchAttributes.GetIndexedFields()
-			if len(fields) != 3 {
-				return false
-			}
+			require.Len(t, fields, 3)
 
 			searchValBytes := fields["CustomTextField"]
 			var searchVal string
 			payload.Decode(searchValBytes, &searchVal)
-			s.Equal("another string", searchVal)
+			require.Equal(t, "another string", searchVal)
 
 			searchValBytes2 := fields["CustomIntField"]
 			var searchVal2 int
 			payload.Decode(searchValBytes2, &searchVal2)
-			s.Equal(123, searchVal2)
+			require.Equal(t, 123, searchVal2)
 
 			buildIdsBytes := fields[sadefs.BuildIds]
 			var buildIds []string
 			err = payload.Decode(buildIdsBytes, &buildIds)
-			s.NoError(err)
-			s.Equal([]string{worker_versioning.UnversionedSearchAttribute}, buildIds)
-
-			return true
+			require.NoError(t, err)
+			require.Equal(t, []string{worker_versioning.UnversionedSearchAttribute}, buildIds)
 		}, 20*time.Second, 100*time.Millisecond)
 	}
 

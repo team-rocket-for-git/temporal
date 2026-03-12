@@ -22,6 +22,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/namespace"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/historyrequire"
 	"go.temporal.io/server/common/testing/taskpoller"
 	"go.temporal.io/server/common/testing/testhooks"
@@ -286,6 +287,18 @@ func (e *testEnv) T() *testing.T {
 
 func (e *testEnv) Tv() *testvars.TestVars {
 	return e.tv
+}
+
+// Eventually disambiguates between FunctionalTestBase.Eventually and require.Assertions.Eventually.
+func (e *testEnv) Eventually(condition func(*eventually.T), timeout, pollInterval time.Duration) {
+	e.t.Helper()
+	eventually.Require(e.t, condition, timeout, pollInterval)
+}
+
+// Eventuallyf disambiguates between FunctionalTestBase.Eventuallyf and require.Assertions.Eventuallyf.
+func (e *testEnv) Eventuallyf(condition func(*eventually.T), timeout, pollInterval time.Duration, msg string, args ...any) {
+	e.t.Helper()
+	eventually.Requiref(e.t, condition, timeout, pollInterval, msg, args...)
 }
 
 // Context returns the test-level timeout context with RPC version headers already included.

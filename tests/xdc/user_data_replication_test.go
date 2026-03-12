@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
@@ -25,6 +24,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/common/primitives/timestamp"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/worker_versioning"
 	"go.temporal.io/server/service/worker/migration"
 	"go.temporal.io/server/service/worker/scanner/build_ids"
@@ -111,7 +111,7 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 	})
 	s.Require().NoError(err)
 
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		// Call matching directly in case frontend is configured to redirect API calls to the active cluster
 		response, err := standbyMatchingClient.GetWorkerBuildIdCompatibility(testcore.NewContext(), &matchingservice.GetWorkerBuildIdCompatibilityRequest{
 			NamespaceId: description.GetNamespaceInfo().Id,
@@ -120,10 +120,8 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 				TaskQueue: taskQueue,
 			},
 		})
-		if err != nil {
-			return false
-		}
-		return len(response.GetResponse().GetMajorVersionSets()) == 1
+		require.NoError(t, err)
+		require.Len(t, response.GetResponse().GetMajorVersionSets(), 1)
 	}, replicationWaitTime, replicationCheckInterval)
 
 	// make another change to test that merging works
@@ -135,7 +133,7 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 	})
 	s.Require().NoError(err)
 
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		response, err := standbyMatchingClient.GetWorkerBuildIdCompatibility(testcore.NewContext(), &matchingservice.GetWorkerBuildIdCompatibilityRequest{
 			NamespaceId: description.GetNamespaceInfo().Id,
 			Request: &workflowservice.GetWorkerBuildIdCompatibilityRequest{
@@ -143,10 +141,8 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 				TaskQueue: taskQueue,
 			},
 		})
-		if err != nil {
-			return false
-		}
-		return len(response.GetResponse().GetMajorVersionSets()) == 2
+		require.NoError(t, err)
+		require.Len(t, response.GetResponse().GetMajorVersionSets(), 2)
 	}, replicationWaitTime, replicationCheckInterval)
 }
 
@@ -190,7 +186,7 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 	})
 	s.NoError(err)
 
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		// Call matching directly in case frontend is configured to redirect API calls to the active cluster
 		response, err := standbyMatchingClient.GetWorkerVersioningRules(ctx, &matchingservice.GetWorkerVersioningRulesRequest{
 			NamespaceId: description.GetNamespaceInfo().Id,
@@ -202,10 +198,8 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 				},
 			},
 		})
-		if err != nil {
-			return false
-		}
-		return len(response.GetResponse().GetAssignmentRules()) == 1
+		require.NoError(t, err)
+		require.Len(t, response.GetResponse().GetAssignmentRules(), 1)
 	}, replicationWaitTime, replicationCheckInterval)
 
 	// make another change to test that merging works
@@ -232,7 +226,7 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 	})
 	s.NoError(err)
 
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		// Call matching directly in case frontend is configured to redirect API calls to the active cluster
 		response, err := standbyMatchingClient.GetWorkerVersioningRules(ctx, &matchingservice.GetWorkerVersioningRulesRequest{
 			NamespaceId: description.GetNamespaceInfo().Id,
@@ -244,11 +238,9 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 				},
 			},
 		})
-		if err != nil {
-			return false
-		}
-		return len(response.GetResponse().GetAssignmentRules()) == 1 &&
-			len(response.GetResponse().GetCompatibleRedirectRules()) == 1
+		require.NoError(t, err)
+		require.Len(t, response.GetResponse().GetAssignmentRules(), 1)
+		require.Len(t, response.GetResponse().GetCompatibleRedirectRules(), 1)
 	}, replicationWaitTime, replicationCheckInterval)
 }
 
@@ -291,22 +283,20 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 	})
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		// Call matching directly in case frontend is configured to redirect API calls to the active cluster
 		response, err := standbyMatchingClient.GetTaskQueueUserData(ctx, &matchingservice.GetTaskQueueUserDataRequest{
 			NamespaceId:   description.GetNamespaceInfo().Id,
 			TaskQueue:     taskQueue,
 			TaskQueueType: enumspb.TASK_QUEUE_TYPE_WORKFLOW,
 		})
-		a := assert.New(t)
-		a.NoError(err)
-		if perType := response.GetUserData().GetData().GetPerType(); a.NotNil(perType) {
-			for tqType := 1; tqType <= 3; tqType++ {
-				data := perType[int32(tqType)].GetDeploymentData()
-				if a.Equal(1, len(data.GetVersions())) {
-					a.True(data.GetVersions()[0].Equal(expectedVersionData))
-				}
-			}
+		require.NoError(t, err)
+		perType := response.GetUserData().GetData().GetPerType()
+		require.NotNil(t, perType)
+		for tqType := 1; tqType <= 3; tqType++ {
+			data := perType[int32(tqType)].GetDeploymentData()
+			require.Len(t, data.GetVersions(), 1)                             //nolint:staticcheck
+			require.True(t, data.GetVersions()[0].Equal(expectedVersionData)) //nolint:staticcheck
 		}
 	}, replicationWaitTime, replicationCheckInterval)
 
@@ -323,22 +313,20 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromActiveToPassi
 	})
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		// Call matching directly in case frontend is configured to redirect API calls to the active cluster
 		response, err := standbyMatchingClient.GetTaskQueueUserData(ctx, &matchingservice.GetTaskQueueUserDataRequest{
 			NamespaceId:   description.GetNamespaceInfo().Id,
 			TaskQueue:     taskQueue,
 			TaskQueueType: enumspb.TASK_QUEUE_TYPE_WORKFLOW,
 		})
-		a := assert.New(t)
-		a.NoError(err)
-		if perType := response.GetUserData().GetData().GetPerType(); a.NotNil(perType) {
-			for tqType := 1; tqType <= 3; tqType++ {
-				data := perType[int32(tqType)].GetDeploymentData()
-				if a.Equal(1, len(data.GetVersions())) {
-					a.True(data.GetVersions()[0].Equal(expectedVersionData))
-				}
-			}
+		require.NoError(t, err)
+		perType := response.GetUserData().GetData().GetPerType()
+		require.NotNil(t, perType)
+		for tqType := 1; tqType <= 3; tqType++ {
+			data := perType[int32(tqType)].GetDeploymentData()
+			require.Len(t, data.GetVersions(), 1)                             //nolint:staticcheck
+			require.True(t, data.GetVersions()[0].Equal(expectedVersionData)) //nolint:staticcheck
 		}
 	}, replicationWaitTime, replicationCheckInterval)
 }
@@ -356,7 +344,7 @@ func (s *UserDataReplicationTestSuite) TestUserDataIsReplicatedFromPassiveToActi
 	})
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		response, err := activeFrontendClient.GetWorkerBuildIdCompatibility(testcore.NewContext(), &workflowservice.GetWorkerBuildIdCompatibilityRequest{
 			Namespace: namespace,
 			TaskQueue: taskQueue,
@@ -610,16 +598,15 @@ func (s *UserDataReplicationTestSuite) TestUserDataTombstonesAreReplicated() {
 	// Add a new build ID in standby cluster to verify it did not persist the replicated tombstones
 	standbyFrontendClient := s.clusters[1].FrontendClient()
 
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		// Wait for propagation
 		response, err := standbyFrontendClient.GetWorkerBuildIdCompatibility(testcore.NewContext(), &workflowservice.GetWorkerBuildIdCompatibilityRequest{
 			Namespace: namespace,
 			TaskQueue: taskQueue,
 		})
-		if err != nil {
-			return false
-		}
-		return len(response.GetMajorVersionSets()) == 2 && response.MajorVersionSets[1].BuildIds[0] == "v3"
+		require.NoError(t, err)
+		require.Len(t, response.GetMajorVersionSets(), 2)
+		require.Equal(t, "v3", response.MajorVersionSets[1].BuildIds[0])
 	}, replicationWaitTime, replicationCheckInterval)
 
 	_, err = standbyFrontendClient.UpdateWorkerBuildIdCompatibility(testcore.NewContext(), &workflowservice.UpdateWorkerBuildIdCompatibilityRequest{
@@ -750,13 +737,13 @@ func (s *UserDataReplicationTestSuite) TestApplyReplicationEventRevivesInUseTomb
 	s.Require().NoError(err)
 
 	// Wait for visibility propagation
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := activeFrontendClient.CountWorkflowExecutions(ctx, &workflowservice.CountWorkflowExecutionsRequest{
 			Namespace: namespace,
 			Query:     fmt.Sprintf("TaskQueue = %q AND BuildIds = %q", taskQueue, worker_versioning.VersionedBuildIdSearchAttribute("v0")),
 		})
-		s.Require().NoError(err)
-		return resp.Count == 1
+		require.NoError(t, err)
+		require.Equal(t, int64(1), resp.Count)
 	}, time.Second*15, time.Millisecond*150)
 
 	adminClient := s.clusters[0].AdminClient()

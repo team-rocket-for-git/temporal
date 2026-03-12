@@ -20,6 +20,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/log/tag"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -204,12 +205,12 @@ func (s *ReplicationEnableTestSuite) TestReplicationEnableFlow() {
 
 	// Namespace should replicate even when workflow replication is disabled
 	// because namespace replication happens when clusters are connected
-	s.Eventually(func() bool {
+	eventually.Require(s.T(), func(t *eventually.T) {
 		_, err := standbyCluster.FrontendClient().DescribeNamespace(ctx, &workflowservice.DescribeNamespaceRequest{
 			Namespace: activeNamespace,
 		})
-		return err == nil
-	}, 60*time.Second, 1*time.Second, "Namespace should replicate when clusters are connected")
+		require.NoError(t, err)
+	}, 60*time.Second, 1*time.Second)
 
 	s.logger.Info("Step 4: Start and complete workflow on active cluster (before replication enabled)")
 
@@ -288,13 +289,15 @@ func (s *ReplicationEnableTestSuite) TestReplicationEnableFlow() {
 
 	s.logger.Info("Step 7: Verify new workflow DOES replicate to standby")
 
-	s.Eventually(func() bool {
+	eventually.Require(s.T(), func(t *eventually.T) {
 		descResp2, descErr := standbyCluster.FrontendClient().DescribeWorkflowExecution(ctx, &workflowservice.DescribeWorkflowExecutionRequest{
 			Namespace: activeNamespace,
 			Execution: &commonpb.WorkflowExecution{WorkflowId: workflowID2},
 		})
-		return descErr == nil && descResp2 != nil && descResp2.WorkflowExecutionInfo.Execution.WorkflowId == workflowID2
-	}, 30*time.Second, 1*time.Second, "Workflow started after enabling replication should replicate to standby")
+		require.NoError(t, descErr)
+		require.NotNil(t, descResp2)
+		require.Equal(t, workflowID2, descResp2.WorkflowExecutionInfo.Execution.WorkflowId)
+	}, 30*time.Second, 1*time.Second)
 
 	s.logger.Info("Step 8: Disable replication on both clusters")
 

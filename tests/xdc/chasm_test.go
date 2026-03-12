@@ -2,10 +2,10 @@ package xdc
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commonpb "go.temporal.io/api/common/v1"
 	namespacepb "go.temporal.io/api/namespace/v1"
@@ -17,6 +17,7 @@ import (
 	"go.temporal.io/server/common/debug"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/namespace"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -108,10 +109,10 @@ func (s *ChasmSuite) TestRetentionTimer() {
 	_, err = s.clusters[0].AdminClient().DescribeMutableState(testcore.NewContext(), describeExecutionRequest)
 	s.NoError(err)
 
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		// Wait for it to be replicated to the standby cluster
 		_, err = s.clusters[1].AdminClient().DescribeMutableState(testcore.NewContext(), describeExecutionRequest)
-		return err == nil
+		require.NoError(t, err)
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Reduce namespace retention to trigger deletion
@@ -125,13 +126,13 @@ func (s *ChasmSuite) TestRetentionTimer() {
 	s.NoError(err)
 
 	// Wait for ns update to be replicated
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		// Wait for it to be replicated to the standby cluster
 		resp, err := s.clusters[1].FrontendClient().DescribeNamespace(testcore.NewContext(), &workflowservice.DescribeNamespaceRequest{
 			Namespace: nsName,
 		})
-		s.NoError(err)
-		return resp.GetConfig().GetWorkflowExecutionRetentionTtl().AsDuration() == retention
+		require.NoError(t, err)
+		require.Equal(t, retention, resp.GetConfig().GetWorkflowExecutionRetentionTtl().AsDuration())
 	}, 10*time.Second, 100*time.Millisecond)
 
 	// Wait for ns registry refresh
@@ -148,10 +149,10 @@ func (s *ChasmSuite) TestRetentionTimer() {
 	s.NoError(err)
 
 	for _, cluster := range []*testcore.TestCluster{s.clusters[0], s.clusters[1]} {
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			// Wait for replication, retention period, and retention timer task processing.
 			_, err = cluster.AdminClient().DescribeMutableState(testcore.NewContext(), describeExecutionRequest)
-			return errors.As(err, new(*serviceerror.NotFound))
+			require.ErrorAs(t, err, new(*serviceerror.NotFound))
 		}, 10*time.Second, 100*time.Millisecond)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -16,6 +17,7 @@ import (
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -143,7 +145,7 @@ func (s *WorkflowMemoTestSuite) startWithMemoHelper(startFn startFunc, id string
 	// verify open visibility
 	var openExecutionInfo *workflowpb.WorkflowExecutionInfo
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err1 := s.FrontendClient().ListOpenWorkflowExecutions(testcore.NewContext(), &workflowservice.ListOpenWorkflowExecutionsRequest{
 				Namespace:       s.Namespace().String(),
 				MaximumPageSize: 100,
@@ -155,13 +157,9 @@ func (s *WorkflowMemoTestSuite) startWithMemoHelper(startFn startFunc, id string
 					WorkflowId: id,
 				}},
 			})
-			s.NoError(err1)
-			if len(resp.Executions) == 1 {
-				openExecutionInfo = resp.Executions[0]
-				return true
-			}
-			s.Logger.Info("Open WorkflowExecution is not yet visible")
-			return false
+			require.NoError(t, err1)
+			require.Len(t, resp.Executions, 1)
+			openExecutionInfo = resp.Executions[0]
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,
@@ -200,7 +198,7 @@ func (s *WorkflowMemoTestSuite) startWithMemoHelper(startFn startFunc, id string
 	// verify closed visibility
 	var closedExecutionInfo *workflowpb.WorkflowExecutionInfo
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err1 := s.FrontendClient().ListClosedWorkflowExecutions(testcore.NewContext(), &workflowservice.ListClosedWorkflowExecutionsRequest{
 				Namespace:       s.Namespace().String(),
 				MaximumPageSize: 100,
@@ -212,13 +210,9 @@ func (s *WorkflowMemoTestSuite) startWithMemoHelper(startFn startFunc, id string
 					WorkflowId: id,
 				}},
 			})
-			s.NoError(err1)
-			if len(resp.Executions) == 1 {
-				closedExecutionInfo = resp.Executions[0]
-				return true
-			}
-			s.Logger.Info("Closed WorkflowExecution is not yet visible")
-			return false
+			require.NoError(t, err1)
+			require.Len(t, resp.Executions, 1)
+			closedExecutionInfo = resp.Executions[0]
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,

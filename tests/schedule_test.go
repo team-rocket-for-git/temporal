@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commonpb "go.temporal.io/api/common/v1"
@@ -30,6 +29,7 @@ import (
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/primitives"
 	"go.temporal.io/server/common/searchattribute/sadefs"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/protorequire"
 	"go.temporal.io/server/service/worker/scheduler"
 	"go.temporal.io/server/tests/testcore"
@@ -234,7 +234,7 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 	}
 
 	// sleep until we see two runs, plus a bit more to ensure that the second run has completed
-	s.Eventually(func() bool { return atomic.LoadInt32(&runs) == 2 }, 15*time.Second, 500*time.Millisecond)
+	s.Eventually(func(t *eventually.T) { require.Equal(t, int32(2), atomic.LoadInt32(&runs)) }, 15*time.Second, 500*time.Millisecond)
 	time.Sleep(2 * time.Second) //nolint:forbidigo
 
 	// wait for visibility to stabilize on completed before calling describe,
@@ -390,7 +390,7 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 
 	// wait for one new run
 	s.Eventually(
-		func() bool { return atomic.LoadInt32(&runs2) == 1 },
+		func(t *eventually.T) { require.Equal(t, int32(1), atomic.LoadInt32(&runs2)) },
 		7*time.Second,
 		500*time.Millisecond,
 	)
@@ -443,8 +443,8 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 	s.NoError(err)
 
 	// wait until search attributes are updated
-	s.EventuallyWithT(
-		func(c *assert.CollectT) {
+	s.Eventually(
+		func(t *eventually.T) {
 			describeResp, err = s.FrontendClient().DescribeSchedule(
 				s.newContext(),
 				&workflowservice.DescribeScheduleRequest{
@@ -452,12 +452,12 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 					ScheduleId: sid,
 				},
 			)
-			require.NoError(c, err)
-			require.Len(c, describeResp.SearchAttributes.GetIndexedFields(), 3)
-			require.Equal(c, schSAValue.Data, describeResp.SearchAttributes.IndexedFields[csaKeyword].Data)
-			require.Equal(c, schSAIntValue.Data, describeResp.SearchAttributes.IndexedFields[csaInt].Data)
-			require.Equal(c, schSADoubleValue.Data, describeResp.SearchAttributes.IndexedFields[csaDouble].Data)
-			require.NotContains(c, describeResp.SearchAttributes.IndexedFields, csaBool)
+			require.NoError(t, err)
+			require.Len(t, describeResp.SearchAttributes.GetIndexedFields(), 3)
+			require.Equal(t, schSAValue.Data, describeResp.SearchAttributes.IndexedFields[csaKeyword].Data)
+			require.Equal(t, schSAIntValue.Data, describeResp.SearchAttributes.IndexedFields[csaInt].Data)
+			require.Equal(t, schSADoubleValue.Data, describeResp.SearchAttributes.IndexedFields[csaDouble].Data)
+			require.NotContains(t, describeResp.SearchAttributes.IndexedFields, csaBool)
 		},
 		2*time.Second,
 		500*time.Millisecond,
@@ -479,8 +479,8 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 	s.NoError(err)
 
 	// wait until search attributes are updated
-	s.EventuallyWithT(
-		func(c *assert.CollectT) {
+	s.Eventually(
+		func(t *eventually.T) {
 			describeResp, err = s.FrontendClient().DescribeSchedule(
 				s.newContext(),
 				&workflowservice.DescribeScheduleRequest{
@@ -488,8 +488,8 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 					ScheduleId: sid,
 				},
 			)
-			require.NoError(c, err)
-			require.Empty(c, describeResp.SearchAttributes.GetIndexedFields())
+			require.NoError(t, err)
+			require.Empty(t, describeResp.SearchAttributes.GetIndexedFields())
 		},
 		5*time.Second,
 		500*time.Millisecond,
@@ -547,13 +547,13 @@ func (s *scheduleFunctionalSuiteBase) TestBasics() {
 	})
 	s.Error(err)
 
-	s.Eventually(func() bool { // wait for visibility
+	s.Eventually(func(t *eventually.T) { // wait for visibility
 		listResp, err := s.FrontendClient().ListSchedules(s.newContext(), &workflowservice.ListSchedulesRequest{
 			Namespace:       s.Namespace().String(),
 			MaximumPageSize: 5,
 		})
-		s.NoError(err)
-		return len(listResp.Schedules) == 0
+		require.NoError(t, err)
+		require.Empty(t, listResp.Schedules)
 	}, 10*time.Second, 1*time.Second)
 }
 
@@ -617,7 +617,7 @@ func (s *scheduleFunctionalSuiteBase) TestInput() {
 	s.NoError(err)
 	s.cleanup(sid)
 
-	s.Eventually(func() bool { return atomic.LoadInt32(&runs) == 1 }, 8*time.Second, 200*time.Millisecond)
+	s.Eventually(func(t *eventually.T) { require.Equal(t, int32(1), atomic.LoadInt32(&runs)) }, 8*time.Second, 200*time.Millisecond)
 }
 
 func (s *scheduleFunctionalSuiteBase) TestLastCompletionAndError() {
@@ -691,7 +691,7 @@ func (s *scheduleFunctionalSuiteBase) TestLastCompletionAndError() {
 	s.NoError(err)
 	s.cleanup(sid)
 
-	s.Eventually(func() bool { return atomic.LoadInt32(&testComplete) == 1 }, 20*time.Second, 200*time.Millisecond)
+	s.Eventually(func(t *eventually.T) { require.Equal(t, int32(1), atomic.LoadInt32(&testComplete)) }, 20*time.Second, 200*time.Millisecond)
 }
 
 // Tests that a schedule created in the V1 stack will also be visible in the V2 stack.
@@ -818,7 +818,7 @@ func (s *ScheduleV1FunctionalSuite) TestRefresh() {
 	s.NoError(err)
 	s.cleanup(sid)
 
-	s.Eventually(func() bool { return atomic.LoadInt32(&runs) == 1 }, 6*time.Second, 200*time.Millisecond)
+	s.Eventually(func(t *eventually.T) { require.Equal(t, int32(1), atomic.LoadInt32(&runs)) }, 6*time.Second, 200*time.Millisecond)
 
 	// workflow has started but is now sleeping. it will timeout in 2 seconds.
 
@@ -866,9 +866,9 @@ func (s *ScheduleV1FunctionalSuite) TestRefresh() {
 	s.EqualValues(0, len(describeResp.Info.RunningWorkflows))
 
 	// check scheduler has gotten the refresh and done some stuff. signal is sent without waiting so we need to wait.
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		events3 := s.GetHistory(s.Namespace().String(), &commonpb.WorkflowExecution{WorkflowId: scheduler.WorkflowIDPrefix + sid})
-		return len(events3) > len(events2)
+		require.Greater(t, len(events3), len(events2))
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
@@ -1123,8 +1123,8 @@ func (s *scheduleFunctionalSuiteBase) TestUpdateIntervalTakesEffect() {
 	s.NoError(err)
 
 	// After updating to 1s interval, we should see runs start within a few seconds.
-	s.Eventually(
-		func() bool { return atomic.LoadInt32(&runs) >= 2 },
+	s.Eventuallyf(
+		func(t *eventually.T) { require.GreaterOrEqual(t, atomic.LoadInt32(&runs), int32(2)) },
 		10*time.Second,
 		500*time.Millisecond,
 		"expected at least 2 runs within 10s after updating interval to 1s",
@@ -1296,7 +1296,7 @@ func (s *ScheduleV1FunctionalSuite) TestNextTimeCache() {
 
 	// wait for at least 13 runs
 	const count = 13
-	s.Eventually(func() bool { return runs.Load() >= count }, (count+10)*time.Second, 500*time.Millisecond)
+	s.Eventually(func(t *eventually.T) { require.GreaterOrEqual(t, runs.Load(), int32(count)) }, (count+10)*time.Second, 500*time.Millisecond)
 
 	// there should be only four side effects for 13 runs, and only two mentioning "Next"
 	// (cache refills)
@@ -1333,24 +1333,24 @@ func (s *ScheduleV1FunctionalSuite) TestNextTimeCache() {
 // with the given id and for which the optional predicate function returns true.
 func (s *scheduleFunctionalSuiteBase) getScheduleEntryFomVisibility(sid string, predicate func(*schedulepb.ScheduleListEntry) bool) *schedulepb.ScheduleListEntry {
 	var slEntry *schedulepb.ScheduleListEntry
-	s.Require().Eventually(func() bool { // wait for visibility
+	s.Eventually(func(t *eventually.T) { // wait for visibility
 		listResp, err := s.FrontendClient().ListSchedules(s.newContext(), &workflowservice.ListSchedulesRequest{
 			Namespace:       s.Namespace().String(),
 			MaximumPageSize: 5,
 		})
-		if err != nil {
-			return false
-		}
+		require.NoError(t, err)
+		var found bool
 		for _, ent := range listResp.Schedules {
 			if ent.ScheduleId == sid {
-				if predicate != nil && !predicate(ent) {
-					return false
+				if predicate != nil {
+					require.True(t, predicate(ent))
 				}
 				slEntry = ent
-				return true
+				found = true
+				break
 			}
 		}
-		return false
+		require.True(t, found, "schedule %s not found in ListSchedules", sid)
 	}, 15*time.Second, 1*time.Second)
 	return slEntry
 }
@@ -1552,40 +1552,41 @@ func (s *scheduleFunctionalSuiteBase) TestCountSchedules() {
 	}
 
 	// Wait for schedules to appear in visibility
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		countResp, err := s.FrontendClient().CountSchedules(s.newContext(), &workflowservice.CountSchedulesRequest{
 			Namespace: s.Namespace().String(),
 		})
-		if err != nil {
-			return false
-		}
-		return countResp.Count >= 3
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, countResp.Count, int64(3))
 	}, 15*time.Second, 1*time.Second)
 
 	// Test basic count (all schedules)
-	s.Eventually(func() bool {
+	s.Eventuallyf(func(t *eventually.T) {
 		countResp, err := s.FrontendClient().CountSchedules(s.newContext(), &workflowservice.CountSchedulesRequest{
 			Namespace: s.Namespace().String(),
 		})
-		return err == nil && countResp.Count >= 3
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, countResp.Count, int64(3))
 	}, 15*time.Second, 1*time.Second, "Expected at least 3 schedules")
 
 	// Test count with query filter for paused schedules
-	s.Eventually(func() bool {
+	s.Eventuallyf(func(t *eventually.T) {
 		countResp, err := s.FrontendClient().CountSchedules(s.newContext(), &workflowservice.CountSchedulesRequest{
 			Namespace: s.Namespace().String(),
 			Query:     fmt.Sprintf("%s = true", sadefs.TemporalSchedulePaused),
 		})
-		return err == nil && countResp.Count >= 1
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, countResp.Count, int64(1))
 	}, 15*time.Second, 1*time.Second, "Expected at least 1 paused schedule")
 
 	// Test count with query filter for non-paused schedules
-	s.Eventually(func() bool {
+	s.Eventuallyf(func(t *eventually.T) {
 		countResp, err := s.FrontendClient().CountSchedules(s.newContext(), &workflowservice.CountSchedulesRequest{
 			Namespace: s.Namespace().String(),
 			Query:     fmt.Sprintf("%s = false", sadefs.TemporalSchedulePaused),
 		})
-		return err == nil && countResp.Count >= 2
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, countResp.Count, int64(2))
 	}, 15*time.Second, 1*time.Second, "Expected at least 2 non-paused schedules")
 }
 

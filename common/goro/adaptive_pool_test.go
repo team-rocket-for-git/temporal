@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.temporal.io/server/common/clock"
 	"go.temporal.io/server/common/goro"
+	"go.temporal.io/server/common/testing/eventually"
 )
 
 func block()   { <-make(chan struct{}) }
@@ -49,7 +51,7 @@ func TestAdaptivePool_Grows(t *testing.T) {
 
 	// wait for goroutine to block in Do
 	// there should be one timer
-	assert.Eventually(t, func() bool { return ts.NumTimers() == 1 }, time.Second, time.Millisecond)
+	eventually.Require(t, func(t *eventually.T) { require.Equal(t, 1, ts.NumTimers()) }, time.Second, time.Millisecond)
 
 	select {
 	case <-doneCh:

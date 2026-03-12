@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -20,6 +19,7 @@ import (
 	deploymentspb "go.temporal.io/server/api/deployment/v1"
 	"go.temporal.io/server/common"
 	"go.temporal.io/server/common/dynamicconfig"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/worker_versioning"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -266,8 +266,8 @@ func (s *taskQueueStatsSuite) currentVersionAbsorbsUnversionedBacklogNoRamping()
 		MaxExtraTasks: 0,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// DescribeWorkerDeploymentVersion: current version should also show the full backlog for this task queue.
 		s.requireWDVTaskQueueStatsRelaxed(
@@ -304,8 +304,8 @@ func (s *taskQueueStatsSuite) currentVersionAbsorbsUnversionedBacklogNoRamping()
 		MaxExtraTasks: 0,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// Since the activity task queue is part of the current version,
 		// the DescribeWorkerDeploymentVersion should report the backlog count for the activity task queue.
@@ -379,8 +379,8 @@ func (s *taskQueueStatsSuite) rampingAndCurrentAbsorbsUnversionedBacklog() {
 	// Currently only testing the following API's:
 	// - DescribeWorkerDeploymentVersion for the current and ramping versions.
 	// - DescribeTaskQueue Legacy Mode for the current and ramping versions.
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// DescribeWorkerDeploymentVersion: current version should also show only 70% of the unversioned backlog for this task queue
 		// as a ramping version, with ramp set to 30%, exists and absorbs 30% of the unversioned backlog.
@@ -461,8 +461,8 @@ func (s *taskQueueStatsSuite) rampingAndCurrentAbsorbsUnversionedBacklog() {
 		MaxExtraTasks: 0,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// Validate current version activity stats
 		s.requireWDVTaskQueueStatsRelaxed(
@@ -528,8 +528,8 @@ func (s *taskQueueStatsSuite) currentAbsorbsUnversionedBacklogWhenRampingToUnver
 		MaxExtraTasks: 0,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// There is no way right now for a user to query stats of the "unversioned" version. All we can do in this case
 		// is to query the current version's stats and see that it is attributed 80% of the unversioned backlog.
@@ -594,8 +594,8 @@ func (s *taskQueueStatsSuite) rampingAbsorbsUnversionedBacklogWhenCurrentIsUnver
 		MaxExtraTasks: 0,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// We can't query "unversioned" as a WorkerDeploymentVersion, but we can validate that the ramping version
 		// is attributed its ramp share of the unversioned backlog.
@@ -668,8 +668,8 @@ func (s *taskQueueStatsSuite) inactiveVersionDoesNotAbsorbUnversionedBacklog() {
 	// Currently only testing the following API's:
 	// - DescribeWorkerDeploymentVersion
 	// - DescribeTaskQueue Legacy Mode
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// DescribeWorkerDeploymentVersion: current version should should show 100% of the unversioned backlog for this task queue
 		s.requireWDVTaskQueueStatsRelaxed(
@@ -740,8 +740,8 @@ func (s *taskQueueStatsSuite) inactiveVersionDoesNotAbsorbUnversionedBacklog() {
 		MaxExtraTasks: 0,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		// The activity task queue of the current version should have the backlog count for the activities that were scheduled
 		s.requireWDVTaskQueueStatsRelaxed(
@@ -1256,8 +1256,8 @@ func (s *taskQueueStatsSuite) createVersionsInTaskQueue(ctx context.Context, tqN
 	}()
 
 	// Wait for the version to be created.
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 		resp, err := s.FrontendClient().DescribeWorkerDeploymentVersion(ctx, &workflowservice.DescribeWorkerDeploymentVersionRequest{
 			Namespace: s.Namespace().String(),
 			DeploymentVersion: &deploymentpb.WorkerDeploymentVersion{
@@ -1389,7 +1389,7 @@ func (s *taskQueueStatsSuite) validateAllTaskQueueStats(
 	}
 }
 
-// validateRates verifies TasksAddRate and/or TasksDispatchRate in a dedicated EventuallyWithT block.
+// validateRates verifies TasksAddRate and/or TasksDispatchRate in a dedicated eventually.Require block.
 // This should be called immediately after the relevant operation (enqueue for add rate, poll for dispatch rate)
 // to ensure the rate is checked while still fresh (before the 30-second sliding window decays).
 func (s *taskQueueStatsSuite) validateRates(
@@ -1408,8 +1408,8 @@ func (s *taskQueueStatsSuite) validateRates(
 		ReportStats:   true,
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 		label := "validateRates[" + tqType.String() + "]"
 
 		resp, err := s.FrontendClient().DescribeTaskQueue(ctx, req)
@@ -1470,8 +1470,8 @@ func (s *taskQueueStatsSuite) validateDescribeTaskQueueWithDefaultMode(
 	//nolint:staticcheck // SA1019 deprecated
 	require.Nil(s.t, resp.TaskQueueStatus, "status should not be reported by default")
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 		label := "DescribeTaskQueue_DefaultMode[" + tqType.String() + "]"
 
 		req.ReportStats = true
@@ -1528,8 +1528,8 @@ func (s *taskQueueStatsSuite) validateDescribeTaskQueueWithEnhancedMode(
 		require.Nil(s.t, resp.TaskQueueStatus, "status should not be reported")
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		req.ReportStats = true
 		resp, err := s.FrontendClient().DescribeTaskQueue(ctx, req)
@@ -1580,8 +1580,8 @@ func (s *taskQueueStatsSuite) validateDescribeWorkerDeploymentVersion(
 		require.Nil(s.t, info.Stats, "stats should not be reported by default")
 	}
 
-	require.EventuallyWithT(s.t, func(c *assert.CollectT) {
-		a := require.New(c)
+	eventually.Require(s.t, func(t *eventually.T) {
+		a := require.New(t)
 
 		req.ReportTaskQueueStats = true
 		resp, err := s.FrontendClient().DescribeWorkerDeploymentVersion(ctx, req)

@@ -4,10 +4,10 @@ import (
 	"cmp"
 	"context"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	namespacepb "go.temporal.io/api/namespace/v1"
@@ -23,6 +23,7 @@ import (
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/namespace"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/historyrequire"
 	"go.temporal.io/server/common/testing/protorequire"
 	"go.temporal.io/server/tests/testcore"
@@ -175,25 +176,25 @@ func (s *xdcBaseSuite) waitForClusterConnected(
 	targetClusterName string,
 ) {
 	s.logger.Info("wait for clusters to be synced", tag.SourceCluster(sourceCluster.ClusterName()), tag.TargetCluster(targetClusterName))
-	s.EventuallyWithT(func(c *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		s.logger.Info("check if clusters are synced", tag.SourceCluster(sourceCluster.ClusterName()), tag.TargetCluster(targetClusterName))
 		resp, err := sourceCluster.HistoryClient().GetReplicationStatus(context.Background(), &historyservice.GetReplicationStatusRequest{})
-		require.NoError(c, err)
-		require.Lenf(c, resp.Shards, 1, "test cluster has only one history shard")
+		require.NoError(t, err)
+		require.Lenf(t, resp.Shards, 1, "test cluster has only one history shard")
 
 		shard := resp.Shards[0]
-		require.NotNil(c, shard)
-		require.Greater(c, shard.MaxReplicationTaskId, int64(0))
-		require.NotNil(c, shard.ShardLocalTime)
-		require.WithinRange(c, shard.ShardLocalTime.AsTime(), s.startTime, time.Now())
-		require.NotNil(c, shard.RemoteClusters)
+		require.NotNil(t, shard)
+		require.Positive(t, shard.MaxReplicationTaskId)
+		require.NotNil(t, shard.ShardLocalTime)
+		require.WithinRange(t, shard.ShardLocalTime.AsTime(), s.startTime, time.Now())
+		require.NotNil(t, shard.RemoteClusters)
 
 		standbyAckInfo, ok := shard.RemoteClusters[targetClusterName]
-		require.True(c, ok)
-		require.NotNil(c, standbyAckInfo)
-		require.LessOrEqual(c, shard.MaxReplicationTaskId, standbyAckInfo.AckedTaskId)
-		require.NotNil(c, standbyAckInfo.AckedTaskVisibilityTime)
-		require.WithinRange(c, standbyAckInfo.AckedTaskVisibilityTime.AsTime(), s.startTime, time.Now())
+		require.True(t, ok)
+		require.NotNil(t, standbyAckInfo)
+		require.LessOrEqual(t, shard.MaxReplicationTaskId, standbyAckInfo.AckedTaskId)
+		require.NotNil(t, standbyAckInfo.AckedTaskVisibilityTime)
+		require.WithinRange(t, standbyAckInfo.AckedTaskVisibilityTime.AsTime(), s.startTime, time.Now())
 	}, 90*time.Second, 1*time.Second)
 	s.logger.Info("clusters synced", tag.SourceCluster(sourceCluster.ClusterName()), tag.TargetCluster(targetClusterName))
 }
@@ -262,7 +263,7 @@ func (s *xdcBaseSuite) createNamespace(
 	_, err := clusters[0].FrontendClient().RegisterNamespace(ctx, regReq)
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		for _, r := range clusters[0].Host().NamespaceRegistries() {
 			resp, err := r.GetNamespace(namespace.Name(ns))
 			require.NoError(t, err)
@@ -274,7 +275,7 @@ func (s *xdcBaseSuite) createNamespace(
 	if len(clusters) > 1 && isGlobal {
 		// If namespace is global and config has more than 1 cluster, it should be replicated to these other clusters.
 		// Check other clusters too.
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			for _, c := range clusters[1:] {
 				for _, r := range c.Host().NamespaceRegistries() {
 					resp, err := r.GetNamespace(namespace.Name(ns))
@@ -291,6 +292,7 @@ func (s *xdcBaseSuite) createNamespace(
 }
 
 func updateNamespaceConfig(
+	tb testing.TB,
 	s *require.Assertions,
 	ns string,
 	newConfigFn func() *namespacepb.NamespaceConfig,
@@ -299,7 +301,7 @@ func updateNamespaceConfig(
 ) {
 
 	configVersion := int64(-1)
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	eventually.Require(tb, func(t *eventually.T) {
 		for _, r := range clusters[inClusterIndex].Host().NamespaceRegistries() {
 			// TODO(alex): here and everywere else in this file: instead of waiting for registry to be updated
 			// r.RefreshNamespaceById() can be used. It will require to pass nsID everywhere.
@@ -325,7 +327,7 @@ func updateNamespaceConfig(
 	// Consider returning configVersion in response or using persistence directly.
 	configVersion++
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	eventually.Require(tb, func(t *eventually.T) {
 		for _, r := range clusters[inClusterIndex].Host().NamespaceRegistries() {
 			resp, err := r.GetNamespace(namespace.Name(ns))
 			require.NoError(t, err)
@@ -336,7 +338,7 @@ func updateNamespaceConfig(
 
 	if len(clusters) > 1 {
 		// check remote ns too
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		eventually.Require(tb, func(t *eventually.T) {
 			for ci, c := range clusters {
 				if ci == inClusterIndex {
 					continue
@@ -373,7 +375,7 @@ func (s *xdcBaseSuite) updateNamespaceClusters(
 	s.NoError(err)
 
 	var isGlobalNamespace bool
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		for _, r := range clusters[inClusterIndex].Host().NamespaceRegistries() {
 			resp, err := r.GetNamespace(namespace.Name(ns))
 			require.NoError(t, err)
@@ -386,7 +388,7 @@ func (s *xdcBaseSuite) updateNamespaceClusters(
 	if len(clusters) > 1 && isGlobalNamespace {
 		// If namespace is global and config has more than 1 cluster, it should be replicated to these other clusters.
 		// Check other clusters too.
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			for ci, c := range clusters {
 				if ci == inClusterIndex {
 					continue
@@ -413,7 +415,7 @@ func (s *xdcBaseSuite) promoteNamespace(
 	})
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		for _, r := range s.clusters[inClusterIndex].Host().NamespaceRegistries() {
 			resp, err := r.GetNamespace(namespace.Name(ns))
 			require.NoError(t, err)
@@ -444,7 +446,7 @@ func (s *xdcBaseSuite) failover(
 	s.Equal(targetFailoverVersion, updateResp.GetFailoverVersion())
 
 	// check local and remote clusters
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		for _, c := range s.clusters {
 			for _, r := range c.Host().NamespaceRegistries() {
 				resp, err := r.GetNamespace(namespace.Name(ns))
@@ -456,6 +458,21 @@ func (s *xdcBaseSuite) failover(
 	}, replicationWaitTime, replicationCheckInterval)
 
 	s.waitForClusterSynced()
+}
+
+// Eventually shadows testify's suite.Eventually to use eventually.Require instead.
+// This ensures all polling assertions use require semantics (fail-fast) and proper
+// Goexit detection. Callers using the old func() bool signature will get a compile
+// error, forcing migration.
+func (s *xdcBaseSuite) Eventually(condition func(*eventually.T), timeout, pollInterval time.Duration) {
+	s.T().Helper()
+	eventually.Require(s.T(), condition, timeout, pollInterval)
+}
+
+// Eventuallyf shadows testify's suite.Eventuallyf to use eventually.Requiref instead.
+func (s *xdcBaseSuite) Eventuallyf(condition func(*eventually.T), timeout, pollInterval time.Duration, msg string, args ...any) {
+	s.T().Helper()
+	eventually.Requiref(s.T(), condition, timeout, pollInterval, msg, args...)
 }
 
 func (s *xdcBaseSuite) newClientAndWorker(hostport, ns, taskqueue, identity string) (sdkclient.Client, sdkworker.Worker) {

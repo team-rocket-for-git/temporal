@@ -23,6 +23,7 @@ import (
 	"go.temporal.io/server/common"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/taskpoller"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
@@ -97,9 +98,9 @@ func (s *TaskQueueSuite) taskQueueRateLimitTest(nPartitions, nWorkers int, timeT
 	// wait for backlog to be >= maxBacklog
 	wfBacklogCount := int64(0)
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			wfBacklogCount = s.getBacklogCount(ctx, tv)
-			return wfBacklogCount >= maxBacklog
+			require.GreaterOrEqual(t, wfBacklogCount, int64(maxBacklog))
 		},
 		5*time.Second,
 		200*time.Millisecond,
@@ -108,14 +109,14 @@ func (s *TaskQueueSuite) taskQueueRateLimitTest(nPartitions, nWorkers int, timeT
 	// terminate all those workflow executions so that all the tasks in the backlog are invalid
 	var wfList []*workflowpb.WorkflowExecutionInfo
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			listResp, err := s.FrontendClient().ListWorkflowExecutions(ctx, &workflowservice.ListWorkflowExecutionsRequest{
 				Namespace: s.Namespace().String(),
 				Query:     fmt.Sprintf("TaskQueue = '%s'", tv.TaskQueue().GetName()),
 			})
-			s.NoError(err)
+			require.NoError(t, err)
 			wfList = listResp.GetExecutions()
-			return len(wfList) == maxBacklog
+			require.Len(t, wfList, maxBacklog)
 		},
 		5*time.Second,
 		200*time.Millisecond,
@@ -142,9 +143,9 @@ func (s *TaskQueueSuite) taskQueueRateLimitTest(nPartitions, nWorkers int, timeT
 
 	// wait for backlog to be 0
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			wfBacklogCount = s.getBacklogCount(ctx, tv)
-			return wfBacklogCount == 0
+			require.Equal(t, int64(0), wfBacklogCount)
 		},
 		timeToDrain,
 		500*time.Millisecond,
@@ -450,27 +451,19 @@ func (s *TaskQueueSuite) TestTaskQueueRateLimit_UpdateFromWorkerConfigAndAPI() {
 	})
 	s.NoError(err)
 
-	require.Eventually(s.T(), func() bool {
+	s.Eventuallyf(func(t *eventually.T) {
 		describeResp, err := s.FrontendClient().DescribeTaskQueue(context.Background(), &workflowservice.DescribeTaskQueueRequest{
 			Namespace:     s.Namespace().String(),
 			TaskQueue:     &taskqueuepb.TaskQueue{Name: activityTaskQueue},
 			TaskQueueType: enumspb.TASK_QUEUE_TYPE_ACTIVITY,
 			ReportConfig:  true,
 		})
-		if err != nil {
-			return false
-		}
+		require.NoError(t, err)
 		cfg := describeResp.GetConfig()
 		rl := cfg.GetQueueRateLimit().GetRateLimit()
-		if rl == nil {
-			s.T().Logf("Rate limit not set in Persistence")
-			return false
-		}
-		if rl.GetRequestsPerSecond() == float32(apiSetRPS) {
-			s.T().Logf("Rate limit set in Persistence: %v", rl.GetRequestsPerSecond())
-			return true
-		}
-		return false
+		require.NotNil(t, rl, "Rate limit not set in Persistence")
+		s.T().Logf("Rate limit set in Persistence: %v", rl.GetRequestsPerSecond())
+		require.InDelta(t, float64(apiSetRPS), float64(rl.GetRequestsPerSecond()), 0.01)
 	}, 3*time.Second, 100*time.Millisecond, "DescribeTaskQueue did not reflect override")
 
 	// Launch workflows under API override
@@ -978,7 +971,7 @@ func (s *TaskQueueSuite) TestShutdownWorkerCancelsOutstandingPolls() {
 	// Keep calling ShutdownWorker until all polls are cancelled and complete.
 	// Polls register asynchronously, so we retry until all are caught.
 	ctx := context.Background()
-	s.Eventually(func() bool {
+	s.Eventuallyf(func(t *eventually.T) {
 		_, err := s.FrontendClient().ShutdownWorker(ctx, &workflowservice.ShutdownWorkerRequest{
 			Namespace:         s.Namespace().String(),
 			StickyTaskQueue:   tv.StickyTaskQueue().GetName(),
@@ -987,9 +980,9 @@ func (s *TaskQueueSuite) TestShutdownWorkerCancelsOutstandingPolls() {
 			WorkerInstanceKey: workerInstanceKey,
 			TaskQueue:         tv.TaskQueue().GetName(),
 		})
-		s.NoError(err)
+		require.NoError(t, err)
 		// Check if all polls have completed (short timeout to just check status)
-		return common.AwaitWaitGroup(&wg, 50*time.Millisecond)
+		require.True(t, common.AwaitWaitGroup(&wg, 50*time.Millisecond))
 	}, 30*time.Second, 200*time.Millisecond, "polls did not complete after repeated shutdown attempts")
 
 	close(pollResults)

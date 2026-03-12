@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commonpb "go.temporal.io/api/common/v1"
@@ -24,6 +23,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/payload"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 )
 
@@ -162,7 +162,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseUnpauseWorkflowExecution() {
 	workflowID := workflowRun.GetID()
 	runID := workflowRun.GetRunID()
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -187,14 +187,14 @@ func (s *PauseWorkflowExecutionSuite) TestPauseUnpauseWorkflowExecution() {
 	s.NotNil(pauseResp)
 
 	// ensure that the workflow is paused
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		s.assertWorkflowIsPaused(ctx, t, workflowID, runID)
 	}, 5*time.Second, 200*time.Millisecond)
 
 	// Send signal to the workflow to complete the workflow. Since the workflow is paused, it should stay paused.
 	err = s.SdkClient().SignalWorkflow(ctx, workflowID, runID, s.testEndSignal, "signal to complete the workflow")
 	s.NoError(err)
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		s.assertWorkflowIsPaused(ctx, t, workflowID, runID)
 	}, 5*time.Second, 200*time.Millisecond)
 
@@ -212,7 +212,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseUnpauseWorkflowExecution() {
 	s.NotNil(unpauseResp)
 
 	// Workflow status should be running after unpausing. The workflow won't complete until the activity is unblocked.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -227,7 +227,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseUnpauseWorkflowExecution() {
 				var pauseInfoEntries []string
 				err = payload.Decode(pauseInfoPayload, &pauseInfoEntries)
 				require.NoError(t, err)
-				assert.Empty(t, pauseInfoEntries, "TemporalPauseInfo should be empty after unpause")
+				require.Empty(t, pauseInfoEntries, "TemporalPauseInfo should be empty after unpause")
 			}
 		}
 	}, 5*time.Second, 200*time.Millisecond)
@@ -236,7 +236,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseUnpauseWorkflowExecution() {
 	s.activityCompletedCh <- struct{}{}
 
 	// assert that the workflow completes now.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -275,7 +275,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 	runID := workflowRun.GetRunID()
 
 	// Wait for activity to start and fail at least once
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		require.Len(t, desc.PendingActivities, 1)
@@ -298,7 +298,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 	s.NotNil(pauseActivityResp)
 
 	// Wait for activity to be paused
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		require.Len(t, desc.PendingActivities, 1)
@@ -319,7 +319,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 	s.NotNil(pauseWorkflowResp)
 
 	// Verify both workflow and activity are paused, and TemporalPauseInfo contains entries for both
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		// Use existing helper to verify workflow is paused (includes workflow pause search attribute checks)
 		s.assertWorkflowIsPaused(ctx, t, workflowID, runID)
 
@@ -330,7 +330,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 		require.True(t, desc.PendingActivities[0].Paused)
 
 		// Additionally verify TemporalPauseInfo contains activity pause entry
-		assert.True(t, s.hasActivityPauseEntries(desc), "Should contain at least one activity pause entry")
+		require.True(t, s.hasActivityPauseEntries(desc), "Should contain at least one activity pause entry")
 	}, 5*time.Second, 200*time.Millisecond)
 
 	// Unblock the failing activity so it can succeed
@@ -352,7 +352,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 
 	// Verify activity completes but workflow remains paused
 	// TemporalPauseInfo should only contain workflow pause entries (activity entries removed)
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		// Use existing helper to verify workflow is still paused (includes workflow pause search attribute checks)
 		s.assertWorkflowIsPaused(ctx, t, workflowID, runID)
 
@@ -373,10 +373,10 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 				break
 			}
 		}
-		assert.True(t, activityCompleted, "Activity should have completed successfully")
+		require.True(t, activityCompleted, "Activity should have completed successfully")
 
 		// Additionally verify TemporalPauseInfo no longer contains activity pause entries
-		assert.False(t, s.hasActivityPauseEntries(desc), "Should not contain activity pause entries")
+		require.False(t, s.hasActivityPauseEntries(desc), "Should not contain activity pause entries")
 	}, 5*time.Second, 200*time.Millisecond)
 
 	// Unpause the workflow
@@ -393,7 +393,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 	s.NotNil(unpauseWorkflowResp)
 
 	// Verify workflow completes successfully
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -408,7 +408,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowAndActivity() {
 				var pauseInfoEntries []string
 				err = payload.Decode(pauseInfoPayload, &pauseInfoEntries)
 				require.NoError(t, err)
-				assert.Empty(t, pauseInfoEntries, "TemporalPauseInfo should be empty after workflow completes")
+				require.Empty(t, pauseInfoEntries, "TemporalPauseInfo should be empty after workflow completes")
 			}
 		}
 	}, 10*time.Second, 200*time.Millisecond)
@@ -430,7 +430,7 @@ func (s *PauseWorkflowExecutionSuite) TestQueryWorkflowWhenPaused() {
 
 	// Wait for the workflow task to be processed and the activity to be scheduled,
 	// so that a subsequent pause request is applied to a fully initialized workflow.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -453,7 +453,7 @@ func (s *PauseWorkflowExecutionSuite) TestQueryWorkflowWhenPaused() {
 	s.NotNil(pauseResp)
 
 	// Wait until paused.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		s.assertWorkflowIsPaused(ctx, t, workflowID, runID)
 	}, 5*time.Second, 200*time.Millisecond)
 
@@ -492,7 +492,7 @@ func (s *PauseWorkflowExecutionSuite) TestQueryWorkflowWhenPaused() {
 	err = s.SdkClient().SignalWorkflow(ctx, workflowID, runID, s.testEndSignal, "test end signal")
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -654,7 +654,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowExecutionAlreadyPaused() 
 	workflowID := workflowRun.GetID()
 	runID := workflowRun.GetRunID()
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -679,7 +679,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowExecutionAlreadyPaused() 
 	s.NotNil(pauseResp)
 
 	// Wait until paused.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		s.assertWorkflowIsPaused(ctx, t, workflowID, runID)
 	}, 5*time.Second, 200*time.Millisecond)
 
@@ -705,7 +705,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowExecutionAlreadyPaused() 
 	s.NoError(err)
 	s.NotNil(unpauseResp)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -719,7 +719,7 @@ func (s *PauseWorkflowExecutionSuite) TestPauseWorkflowExecutionAlreadyPaused() 
 	err = s.SdkClient().SignalWorkflow(ctx, workflowID, runID, s.testEndSignal, "test end signal")
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 		require.NoError(t, err)
 		info := desc.GetWorkflowExecutionInfo()
@@ -758,7 +758,7 @@ func (s *PauseWorkflowExecutionSuite) hasActivityPauseEntries(desc *workflowserv
 // - the workflow has the correct pause info.
 // - the TemporalPauseInfo search attribute contains workflow pause entries.
 // - there is no workflow task scheduled event inbetween pause and unpause events.
-func (s *PauseWorkflowExecutionSuite) assertWorkflowIsPaused(ctx context.Context, t *assert.CollectT, workflowID string, runID string) {
+func (s *PauseWorkflowExecutionSuite) assertWorkflowIsPaused(ctx context.Context, t *eventually.T, workflowID string, runID string) {
 	desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowID, runID)
 	require.NoError(t, err)
 	info := desc.GetWorkflowExecutionInfo()
@@ -771,16 +771,15 @@ func (s *PauseWorkflowExecutionSuite) assertWorkflowIsPaused(ctx context.Context
 
 	// Verify TemporalPauseInfo search attribute is set with workflow pause entries
 	searchAttrs := info.GetSearchAttributes()
-	if assert.NotNil(t, searchAttrs, "Search attributes should not be nil") {
-		pauseInfoPayload, hasPauseInfo := searchAttrs.GetIndexedFields()["TemporalPauseInfo"]
-		if assert.True(t, hasPauseInfo, "TemporalPauseInfo search attribute should exist") && assert.NotNil(t, pauseInfoPayload) {
-			var pauseInfoEntries []string
-			err = payload.Decode(pauseInfoPayload, &pauseInfoEntries)
-			require.NoError(t, err)
-			assert.Contains(t, pauseInfoEntries, fmt.Sprintf("Workflow:%s", workflowID), "Should contain workflow ID")
-			assert.Contains(t, pauseInfoEntries, "Reason:"+s.pauseReason, "Should contain pause reason")
-		}
-	}
+	require.NotNil(t, searchAttrs, "Search attributes should not be nil")
+	pauseInfoPayload, hasPauseInfo := searchAttrs.GetIndexedFields()["TemporalPauseInfo"]
+	require.True(t, hasPauseInfo, "TemporalPauseInfo search attribute should exist")
+	require.NotNil(t, pauseInfoPayload)
+	var pauseInfoEntries []string
+	err = payload.Decode(pauseInfoPayload, &pauseInfoEntries)
+	require.NoError(t, err)
+	require.Contains(t, pauseInfoEntries, fmt.Sprintf("Workflow:%s", workflowID), "Should contain workflow ID")
+	require.Contains(t, pauseInfoEntries, "Reason:"+s.pauseReason, "Should contain pause reason")
 
 	// Also assert that there is no workflow task scheduled event after the pause event.
 	hist := s.SdkClient().GetWorkflowHistory(ctx, workflowID, runID, false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)

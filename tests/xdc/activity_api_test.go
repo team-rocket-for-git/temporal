@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	activitypb "go.temporal.io/api/activity/v1"
@@ -19,6 +18,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -100,7 +100,7 @@ func (s *ActivityApiStateReplicationSuite) TestPauseActivityFailover() {
 	s.NoError(err)
 
 	// wait for activity to start/fail few times
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := activeSDKClient.DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		require.Len(t, description.GetPendingActivities(), 1)
@@ -120,7 +120,7 @@ func (s *ActivityApiStateReplicationSuite) TestPauseActivityFailover() {
 	s.NotNil(pauseResp)
 
 	// verify activity is paused is cluster0
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := activeSDKClient.DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(description.PendingActivities))
@@ -147,7 +147,7 @@ func (s *ActivityApiStateReplicationSuite) TestPauseActivityFailover() {
 	s.NotNil(respUpdate)
 
 	// verify activity is updated in cluster0
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := activeSDKClient.DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		require.NotNil(t, description.GetPendingActivities())
@@ -172,7 +172,7 @@ func (s *ActivityApiStateReplicationSuite) TestPauseActivityFailover() {
 	s.NotNil(resetResp)
 
 	// verify activity is reset, updated and paused in cluster0
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := activeSDKClient.DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		require.NotNil(t, description.GetPendingActivities())
@@ -199,7 +199,7 @@ func (s *ActivityApiStateReplicationSuite) TestPauseActivityFailover() {
 	s.NotNil(standbyClient)
 
 	// verify activity is still paused in cluster1
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := standbyClient.DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		require.NotNil(t, description.GetPendingActivities())

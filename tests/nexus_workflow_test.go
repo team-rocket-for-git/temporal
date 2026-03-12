@@ -12,7 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nexus-rpc/sdk-go/nexus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
@@ -41,6 +40,7 @@ import (
 	commonnexus "go.temporal.io/server/common/nexus"
 	"go.temporal.io/server/common/nexus/nexusrpc"
 	"go.temporal.io/server/common/nexus/nexustest"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/protorequire"
 	"go.temporal.io/server/components/nexusoperations"
 	"go.temporal.io/server/service/frontend/configs"
@@ -106,7 +106,7 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationCancelation() {
 	}, "workflow")
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		pollResp, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
 			Namespace: s.Namespace().String(),
 			TaskQueue: &taskqueuepb.TaskQueue{
@@ -244,7 +244,7 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationCancelation() {
 	s.NoError(err)
 
 	// Poll and wait for the cancelation request to go through.
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, run.GetID(), run.GetRunID())
 		require.NoError(t, err)
 		require.Equal(t, 2, len(desc.PendingNexusOperations))
@@ -320,7 +320,7 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationSyncCompletion() {
 	}, "workflow")
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		pollResp, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
 			Namespace: s.Namespace().String(),
 			TaskQueue: &taskqueuepb.TaskQueue{
@@ -437,7 +437,7 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationSyncCompletion_LargePayload()
 	}, "workflow")
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		pollResp, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
 			Namespace: s.Namespace().String(),
 			TaskQueue: &taskqueuepb.TaskQueue{
@@ -1119,7 +1119,7 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationAsyncFailure() {
 	}, "workflow")
 	s.NoError(err)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		pollResp, err := s.FrontendClient().PollWorkflowTaskQueue(ctx, &workflowservice.PollWorkflowTaskQueueRequest{
 			Namespace: s.Namespace().String(),
 			TaskQueue: &taskqueuepb.TaskQueue{
@@ -2196,7 +2196,7 @@ func (s *NexusWorkflowTestSuite) TestNexusSyncOperationErrorRehydration() {
 
 			if tc.checkPendingError != nil {
 				var f *failurepb.Failure
-				require.EventuallyWithT(t, func(t *assert.CollectT) {
+				eventually.Require(t, func(t *eventually.T) {
 					desc, err := s.SdkClient().DescribeWorkflowExecution(ctx, run.GetID(), run.GetRunID())
 					require.NoError(t, err)
 					require.Len(t, desc.PendingNexusOperations, 1)
@@ -2456,18 +2456,18 @@ func (s *NexusWorkflowTestSuite) TestNexusCallbackAfterCallerComplete() {
 	err = s.SdkClient().SignalWorkflow(ctx, handlerWorkflowID, "", "test-signal", nil)
 	s.NoError(err)
 
-	s.EventuallyWithT(func(ct *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.FrontendClient().DescribeWorkflowExecution(ctx, &workflowservice.DescribeWorkflowExecutionRequest{
 			Namespace: s.Namespace().String(),
 			Execution: &commonpb.WorkflowExecution{
 				WorkflowId: handlerWorkflowID,
 			},
 		})
-		require.NoError(ct, err)
-		require.Len(ct, resp.Callbacks, 1)
-		require.Equal(ct, enumspb.CALLBACK_STATE_FAILED, resp.Callbacks[0].State)
-		require.NotNil(ct, resp.Callbacks[0].LastAttemptFailure)
-		require.Equal(ct, "handler error (NOT_FOUND): workflow execution already completed", resp.Callbacks[0].LastAttemptFailure.Message)
+		require.NoError(t, err)
+		require.Len(t, resp.Callbacks, 1)
+		require.Equal(t, enumspb.CALLBACK_STATE_FAILED, resp.Callbacks[0].State)
+		require.NotNil(t, resp.Callbacks[0].LastAttemptFailure)
+		require.Equal(t, "handler error (NOT_FOUND): workflow execution already completed", resp.Callbacks[0].LastAttemptFailure.Message)
 	}, 3*time.Second, 200*time.Millisecond)
 }
 

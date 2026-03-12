@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nexus-rpc/sdk-go/nexus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commonpb "go.temporal.io/api/common/v1"
@@ -23,6 +22,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/nexus/nexusrpc"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/protoassert"
 	"go.temporal.io/server/common/testing/protorequire"
 	"go.temporal.io/server/common/testing/testvars"
@@ -389,14 +389,14 @@ func (s *CallbacksSuite) TestWorkflowNexusCallbacks_CarriedOver() {
 				// Start event contains all callbacks attached to the first workflow.
 				s.ProtoElementsMatch(cbs, startEventAttr.CompletionCallbacks)
 
-				s.EventuallyWithT(func(col *assert.CollectT) {
+				s.Eventually(func(t *eventually.T) {
 					description, err := sdkClient.DescribeWorkflowExecution(ctx, workflowID, "")
-					require.NoError(col, err)
-					require.Equal(col, len(cbs), len(description.Callbacks))
+					require.NoError(t, err)
+					require.Len(t, description.Callbacks, len(cbs))
 					descCbs := make([]*commonpb.Callback, 0, len(description.Callbacks))
 					for _, callbackInfo := range description.Callbacks {
 						protorequire.ProtoEqual(
-							col,
+							t,
 							&workflowpb.CallbackInfo_Trigger{
 								Variant: &workflowpb.CallbackInfo_Trigger_WorkflowClosed{
 									WorkflowClosed: &workflowpb.CallbackInfo_WorkflowClosed{},
@@ -404,27 +404,27 @@ func (s *CallbacksSuite) TestWorkflowNexusCallbacks_CarriedOver() {
 							},
 							callbackInfo.Trigger,
 						)
-						require.Equal(col, int32(attempt), callbackInfo.Attempt)
+						require.Equal(t, int32(attempt), callbackInfo.Attempt)
 						// Loose check to see that this is set.
 						require.Greater(
-							col,
+							t,
 							callbackInfo.LastAttemptCompleteTime.AsTime(),
 							time.Now().Add(-time.Hour),
 						)
 						if attempt < numAttempts {
-							require.Equal(col, enumspb.CALLBACK_STATE_BACKING_OFF, callbackInfo.State)
+							require.Equal(t, enumspb.CALLBACK_STATE_BACKING_OFF, callbackInfo.State)
 							require.Equal(
-								col,
+								t,
 								"handler error (INTERNAL): intentional error",
 								callbackInfo.LastAttemptFailure.Message,
 							)
 						} else {
-							require.Equal(col, enumspb.CALLBACK_STATE_SUCCEEDED, callbackInfo.State)
-							require.Nil(col, callbackInfo.LastAttemptFailure)
+							require.Equal(t, enumspb.CALLBACK_STATE_SUCCEEDED, callbackInfo.State)
+							require.Nil(t, callbackInfo.LastAttemptFailure)
 						}
 						descCbs = append(descCbs, callbackInfo.Callback)
 					}
-					protoassert.ProtoElementsMatch(col, cbs, descCbs)
+					protoassert.ProtoElementsMatch(t, cbs, descCbs)
 				}, 2*time.Second, 100*time.Millisecond)
 			}
 		})
@@ -590,8 +590,8 @@ func (s *CallbacksSuite) TestNexusResetWorkflowWithCallback() {
 		}
 	}
 
-	s.EventuallyWithT(
-		func(t *assert.CollectT) {
+	s.Eventually(
+		func(t *eventually.T) {
 			// Get the description of the run post-reset and ensure its callbacks are in SUCCEEDED
 			// state.
 			description, err = sdkClient.DescribeWorkflowExecution(ctx, resetWorkflowRun.GetID(), "")

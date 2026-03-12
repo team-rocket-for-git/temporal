@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -18,6 +18,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
 )
@@ -286,7 +287,7 @@ func (s *TransientTaskSuite) TestTransientWorkflowTaskHistorySize() {
 
 	// Wait for the workflow task timeout to actually fire before polling for stage 5
 	// With 10s timeout, poll for up to 15s to ensure timeout has occurred
-	s.EventuallyWithT(func(c *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		events := s.GetHistory(s.Namespace().String(), workflowExecution)
 		// Look for WorkflowTaskTimedOut event (should be event 21)
 		timedOutFound := false
@@ -296,7 +297,7 @@ func (s *TransientTaskSuite) TestTransientWorkflowTaskHistorySize() {
 				break
 			}
 		}
-		assert.True(c, timedOutFound, "Expected WorkflowTaskTimedOut event not found in history")
+		require.True(t, timedOutFound, "Expected WorkflowTaskTimedOut event not found in history")
 	}, 15*time.Second, 500*time.Millisecond)
 
 	// stage 5: process task after timeout and complete workflow

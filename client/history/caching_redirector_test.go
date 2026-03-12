@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"go.temporal.io/api/serviceerror"
@@ -17,6 +16,7 @@ import (
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/membership"
 	serviceerrors "go.temporal.io/server/common/serviceerror"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.uber.org/mock/gomock"
 )
 
@@ -311,11 +311,11 @@ func (s *cachingRedirectorSuite) TestStaleTTL() {
 
 	// Simulate the update, should see the entry marked as stale.
 	r.membershipUpdateCh <- &membership.ChangedEvent{}
-	s.Eventually(func() bool {
+	eventually.Require(s.T(), func(t *eventually.T) {
 		r.mu.RLock()
 		defer r.mu.RUnlock()
 		entry := r.mu.cache[shardID]
-		return !entry.staleAt.IsZero()
+		require.False(t, entry.staleAt.IsZero())
 	}, 4*staleTTL, 10*time.Millisecond)
 
 	// Wait for the stale TTL to expire so clientForShardID re-resolves the shard owner.
@@ -324,10 +324,10 @@ func (s *cachingRedirectorSuite) TestStaleTTL() {
 		Return(membership.NewHostInfoFromAddress(string(testAddr2)), nil).
 		Times(1)
 
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	eventually.Require(s.T(), func(t *eventually.T) {
 		cli, err = r.clientForShardID(shardID)
-		assert.NoError(t, err)
-		assert.Equal(t, mockClient, cli)
-		assert.Equal(t, 2, s.connections.resetCalls)
+		require.NoError(t, err)
+		require.Equal(t, mockClient, cli)
+		require.Equal(t, 2, s.connections.resetCalls)
 	}, 4*staleTTL, 10*time.Millisecond)
 }

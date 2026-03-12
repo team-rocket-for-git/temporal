@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -24,6 +25,7 @@ import (
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -463,9 +465,9 @@ func (s *CronTestClientSuite) TestCronWorkflowCompletionStates() {
 
 	// let first run finish, then check execution and history of second run
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			exec = s.listOpenWorkflowExecutions(startTs, time.Now(), id, 1)[0]
-			return exec.GetExecution().GetRunId() != firstRunID
+			require.NotEqual(t, firstRunID, exec.GetExecution().GetRunId())
 		},
 		targetBackoffDuration+tolerance,
 		250*time.Millisecond,
@@ -570,7 +572,7 @@ func (s *CronTestClientSuite) listOpenWorkflowExecutions(start, end time.Time, i
 	s.T().Helper()
 	var resp *workflowservice.ListOpenWorkflowExecutionsResponse
 	s.Eventuallyf(
-		func() bool {
+		func(t *eventually.T) {
 			var err error
 			resp, err = s.SdkClient().ListOpenWorkflow(
 				testcore.NewContext(), &workflowservice.ListOpenWorkflowExecutionsRequest{
@@ -587,8 +589,8 @@ func (s *CronTestClientSuite) listOpenWorkflowExecutions(start, end time.Time, i
 					},
 				},
 			)
-			s.NoError(err)
-			return len(resp.GetExecutions()) == expectedNumber
+			require.NoError(t, err)
+			require.Len(t, resp.GetExecutions(), expectedNumber)
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,
@@ -603,7 +605,7 @@ func (s *CronTestClientSuite) listClosedWorkflowExecutions(start, end time.Time,
 	s.T().Helper()
 	var resp *workflowservice.ListClosedWorkflowExecutionsResponse
 	s.Eventuallyf(
-		func() bool {
+		func(t *eventually.T) {
 			var err error
 			resp, err = s.SdkClient().ListClosedWorkflow(
 				testcore.NewContext(),
@@ -621,8 +623,8 @@ func (s *CronTestClientSuite) listClosedWorkflowExecutions(start, end time.Time,
 					},
 				},
 			)
-			s.NoError(err)
-			return len(resp.GetExecutions()) == expectedNumber
+			require.NoError(t, err)
+			require.Len(t, resp.GetExecutions(), expectedNumber)
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,

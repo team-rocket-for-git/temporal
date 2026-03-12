@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -21,6 +22,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/service/history/consts"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -203,7 +205,7 @@ SignalLoop:
 
 	// verify visibility is correctly processed from open to close
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err1 := s.FrontendClient().ListClosedWorkflowExecutions(
 				testcore.NewContext(),
 				&workflowservice.ListClosedWorkflowExecutionsRequest{
@@ -220,12 +222,8 @@ SignalLoop:
 					},
 				},
 			)
-			s.NoError(err1)
-			if len(resp.Executions) == 1 {
-				return true
-			}
-			s.Logger.Info("Closed WorkflowExecution is not yet visible")
-			return false
+			require.NoError(t, err1)
+			require.Len(t, resp.Executions, 1, "Closed WorkflowExecution is not yet visible")
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,
@@ -449,7 +447,7 @@ func (s *SizeLimitFunctionalSuite) TestTerminateWorkflowCausedByMsSizeLimit() {
 
 	// verify visibility is correctly processed from open to close
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err1 := s.FrontendClient().ListClosedWorkflowExecutions(
 				testcore.NewContext(),
 				&workflowservice.ListClosedWorkflowExecutionsRequest{
@@ -466,12 +464,8 @@ func (s *SizeLimitFunctionalSuite) TestTerminateWorkflowCausedByMsSizeLimit() {
 					},
 				},
 			)
-			s.NoError(err1)
-			if len(resp.Executions) == 1 {
-				return true
-			}
-			s.Logger.Info("Closed WorkflowExecution is not yet visible")
-			return false
+			require.NoError(t, err1)
+			require.Len(t, resp.Executions, 1, "Closed WorkflowExecution is not yet visible")
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,
@@ -550,7 +544,7 @@ SignalLoop:
 
 	// verify visibility is correctly processed from open to close
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err1 := s.FrontendClient().ListClosedWorkflowExecutions(
 				testcore.NewContext(),
 				&workflowservice.ListClosedWorkflowExecutionsRequest{
@@ -567,12 +561,8 @@ SignalLoop:
 					},
 				},
 			)
-			s.NoError(err1)
-			if len(resp.Executions) == 1 {
-				return true
-			}
-			s.Logger.Info("Closed WorkflowExecution is not yet visible")
-			return false
+			require.NoError(t, err1)
+			require.Len(t, resp.Executions, 1, "Closed WorkflowExecution is not yet visible")
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,

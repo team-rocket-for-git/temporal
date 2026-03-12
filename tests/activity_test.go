@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
@@ -32,6 +31,7 @@ import (
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/service/history/consts"
 	"go.temporal.io/server/tests/testcore"
@@ -1432,7 +1432,7 @@ func (s *ActivityTestSuite) TestActivityTaskCompleteForceCompletion() {
 	run, err := s.SdkClient().ExecuteWorkflow(ctx, workflowOptions, wf)
 	s.NoError(err)
 	ai := <-activityInfo
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := s.SdkClient().DescribeWorkflowExecution(ctx, run.GetID(), run.GetRunID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(description.PendingActivities))
@@ -1464,7 +1464,7 @@ func (s *ActivityTestSuite) TestActivityTaskCompleteRejectCompletion() {
 	run, err := s.SdkClient().ExecuteWorkflow(ctx, workflowOptions, wf)
 	s.NoError(err)
 	ai := <-activityInfo
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := s.SdkClient().DescribeWorkflowExecution(ctx, run.GetID(), run.GetRunID())
 		require.NoError(t, err)
 		require.Equal(t, 1, len(description.PendingActivities))

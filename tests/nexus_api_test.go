@@ -24,6 +24,7 @@ import (
 	"go.temporal.io/server/common/metrics/metricstest"
 	commonnexus "go.temporal.io/server/common/nexus"
 	"go.temporal.io/server/common/nexus/nexusrpc"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/components/nexusoperations"
 	"go.temporal.io/server/service/frontend/configs"
 	"go.temporal.io/server/tests/testcore"
@@ -295,7 +296,7 @@ func (s *NexusApiTestSuite) TestNexusStartOperation_Outcomes() {
 		var result *nexusrpc.ClientStartOperationResponse[string]
 
 		// Wait until the endpoint is loaded into the registry.
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			result, err = nexusrpc.StartOperation(ctx, client, op, "input", nexus.StartOperationOptions{
 				CallbackURL: "http://localhost/callback",
 				RequestID:   "request-id",
@@ -303,7 +304,7 @@ func (s *NexusApiTestSuite) TestNexusStartOperation_Outcomes() {
 				Links:       []nexus.Link{callerNexusLink},
 			})
 			var handlerErr *nexus.HandlerError
-			return err == nil || !(errors.As(err, &handlerErr) && handlerErr.Type == nexus.HandlerErrorTypeNotFound)
+			require.True(t, err == nil || !errors.As(err, &handlerErr) || handlerErr.Type != nexus.HandlerErrorTypeNotFound)
 		}, 10*time.Second, eventuallyTick)
 
 		tc.assertion(t, result, err, headerCapture.lastHeaders)
@@ -553,10 +554,10 @@ func (s *NexusApiTestSuite) TestNexusCancelOperation_Outcomes() {
 		}
 
 		// Wait until the endpoint is loaded into the registry.
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			err = handle.Cancel(ctx, nexus.CancelOperationOptions{Header: header})
 			var handlerErr *nexus.HandlerError
-			return err == nil || !(errors.As(err, &handlerErr) && handlerErr.Type == nexus.HandlerErrorTypeNotFound)
+			require.True(t, err == nil || !errors.As(err, &handlerErr) || handlerErr.Type != nexus.HandlerErrorTypeNotFound)
 		}, 10*time.Second, eventuallyTick)
 
 		tc.assertion(t, err, headerCapture.lastHeaders)

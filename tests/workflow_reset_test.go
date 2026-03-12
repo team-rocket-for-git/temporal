@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	batchpb "go.temporal.io/api/batch/v1"
@@ -24,6 +23,7 @@ import (
 	"go.temporal.io/server/api/matchingservice/v1"
 	"go.temporal.io/server/chasm"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -362,15 +362,13 @@ func (s *WorkflowResetSuite) TestBatchResetWithOptionsUpdate() {
 	s.NoError(err)
 
 	// Wait for batch operation to complete
-	s.Eventually(func() bool {
+	s.Eventuallyf(func(t *eventually.T) {
 		resp, err := s.FrontendClient().DescribeBatchOperation(ctx, &workflowservice.DescribeBatchOperationRequest{
 			Namespace: s.Namespace().String(),
 			JobId:     batchJobID,
 		})
-		if err != nil {
-			return false
-		}
-		return resp.State == enumspb.BATCH_OPERATION_STATE_COMPLETED
+		require.NoError(t, err)
+		require.Equal(t, enumspb.BATCH_OPERATION_STATE_COMPLETED, resp.State)
 	}, 20*time.Second, 1*time.Second, "Batch operation should complete")
 
 	// Get the new run IDs after reset
@@ -590,8 +588,7 @@ func (s *WorkflowResetSuite) startVersionedPollerAndValidate(
 		DeploymentName: deploymentName,
 		BuildId:        buildID,
 	}
-	s.EventuallyWithT(func(t *assert.CollectT) {
-		a := require.New(t)
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.GetTestCluster().MatchingClient().CheckTaskQueueVersionMembership(
 			ctx,
 			&matchingservice.CheckTaskQueueVersionMembershipRequest{
@@ -601,8 +598,8 @@ func (s *WorkflowResetSuite) startVersionedPollerAndValidate(
 				Version:       version,
 			},
 		)
-		a.NoError(err)
-		a.True(resp.GetIsMember())
+		require.NoError(t, err)
+		require.True(t, resp.GetIsMember())
 	}, 10*time.Second, 100*time.Millisecond)
 }
 

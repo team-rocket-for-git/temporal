@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/blang/semver/v4"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.temporal.io/server/common/headers"
+	"go.temporal.io/server/common/testing/eventually"
 )
 
 const (
@@ -30,11 +30,11 @@ func sourceRoot() string {
 func cloneRepo(t *testing.T, url, destDir, ref string) {
 	t.Helper()
 	t.Logf("Cloning %s at %s...", url, ref)
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+	eventually.Requiref(t, func(ct *eventually.T) {
 		_ = os.RemoveAll(destDir)
 		out, err := exec.CommandContext(t.Context(), "git", "clone", "--filter=blob:none", url, destDir).CombinedOutput()
-		require.NoError(collect, err, "git clone failed:\n%s", out)
-	}, retryTimeout, 2*time.Second, "git clone "+filepath.Base(url))
+		require.NoError(ct, err, "git clone failed:\n%s", out)
+	}, retryTimeout, 2*time.Second, "git clone %s", filepath.Base(url))
 
 	out, err := exec.CommandContext(t.Context(), "git", "-C", destDir, "checkout", ref).CombinedOutput()
 	require.NoError(t, err, "git checkout %s failed:\n%s", ref, out)
@@ -86,9 +86,9 @@ func downloadAndBuildReleaseServer(t *testing.T, outputPath string) string {
 
 	t.Log("Resolving release tags...")
 	var version semver.Version
-	require.EventuallyWithT(t, func(collect *assert.CollectT) {
+	eventually.Requiref(t, func(ct *eventually.T) {
 		out, err := exec.CommandContext(t.Context(), "git", "ls-remote", "--tags", "--refs", temporalRepo).CombinedOutput()
-		require.NoError(collect, err, "git ls-remote failed:\n%s", out)
+		require.NoError(ct, err, "git ls-remote failed:\n%s", out)
 
 		var tags []string
 		for _, line := range strings.Split(string(out), "\n") {
@@ -99,7 +99,7 @@ func downloadAndBuildReleaseServer(t *testing.T, outputPath string) string {
 		}
 
 		version = resolveReleaseVersion(headers.ServerVersion, tags)
-		require.NotEqual(collect, semver.Version{}, version, "no tags found for previous minor")
+		require.NotEqual(ct, semver.Version{}, version, "no tags found for previous minor")
 	}, retryTimeout, 2*time.Second, "fetch release tags")
 
 	tag := "v" + version.String()

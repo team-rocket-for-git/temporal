@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	commonpb "go.temporal.io/api/common/v1"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -15,6 +14,7 @@ import (
 	sdkclient "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/util"
 	"go.temporal.io/server/tests/testcore"
 )
@@ -74,7 +74,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NoError(err)
 
 		// wait for activity to start
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.PendingActivities, 1)
@@ -98,7 +98,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(resp)
 
 		// make sure activity is paused on server while running on worker
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.PendingActivities, 1)
@@ -109,7 +109,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		// unblock the activity
 		activityPausedCn <- struct{}{}
 		// make sure activity is paused on server and completed on the worker
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.PendingActivities, 1)
@@ -223,7 +223,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NoError(err)
 
 		// wait for activity to start
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.PendingActivities, 1)
@@ -247,7 +247,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(resp)
 
 		// make sure activity is paused on server while running on worker
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.PendingActivities, 1)
@@ -258,7 +258,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		// End the activity
 		activityPausedCn <- struct{}{}
 
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.NotNil(t, description)
@@ -290,7 +290,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(unpauseResp)
 
 		// wait for activity to complete
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			require.Equal(t, int32(2), startedActivityCount.Load())
 		}, 5*time.Second, 100*time.Millisecond)
 
@@ -355,7 +355,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NoError(err)
 
 		// wait for activity to start
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.PendingActivities, 1)
@@ -405,7 +405,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(unpauseResp)
 
 		// wait for activity to complete
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			require.Equal(t, int32(2), startedActivityCount.Load())
 		}, 5*time.Second, 100*time.Millisecond)
 
@@ -470,7 +470,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NoError(err)
 
 		// wait for activity to start
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.GetPendingActivities(), 1)
@@ -502,7 +502,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(unpauseResp)
 
 		// wait for activity to complete. It should happen immediately since noWait is set
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			require.Equal(t, int32(2), startedActivityCount.Load())
 		}, 2*time.Second, 100*time.Millisecond)
 
@@ -569,7 +569,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NoError(err)
 
 		// wait for activity to start/fail few times
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.GetPendingActivities(), 1)
@@ -589,7 +589,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(resp)
 
 		// wait for activity to be in paused state and waiting for retry
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.GetPendingActivities(), 1)
@@ -614,7 +614,7 @@ func TestActivityApiPauseClientTestSuite(t *testing.T) {
 		s.NotNil(unpauseResp)
 
 		// wait for activity to be running
-		s.EventuallyWithT(func(t *assert.CollectT) {
+		s.Eventually(func(t *eventually.T) {
 			description, err := s.SdkClient().DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 			require.NoError(t, err)
 			require.Len(t, description.GetPendingActivities(), 1)

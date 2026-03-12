@@ -15,6 +15,7 @@ import (
 	"go.temporal.io/api/operatorservice/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/server/api/adminservice/v1"
+	"go.temporal.io/server/common/testing/eventually"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -86,16 +87,15 @@ func registerDefaultNamespace(t *testing.T, conn *grpc.ClientConn) {
 
 	client := workflowservice.NewWorkflowServiceClient(conn)
 
-	require.Eventually(t, func() bool {
+	eventually.Requiref(t, func(ct *eventually.T) {
 		_, err := client.RegisterNamespace(t.Context(), &workflowservice.RegisterNamespaceRequest{
 			Namespace:                        "default",
 			WorkflowExecutionRetentionPeriod: durationpb.New(24 * time.Hour),
 		})
-		if err == nil {
-			return true
+		if err != nil {
+			st, ok := status.FromError(err)
+			require.True(ct, ok && st.Code() == codes.AlreadyExists, "unexpected error: %v", err)
 		}
-		st, ok := status.FromError(err)
-		return ok && st.Code() == codes.AlreadyExists
 	}, retryTimeout, time.Second, "failed to register default namespace")
 }
 
@@ -104,7 +104,7 @@ func createNexusEndpoint(t *testing.T, conn *grpc.ClientConn, endpointName, name
 
 	client := operatorservice.NewOperatorServiceClient(conn)
 
-	require.Eventually(t, func() bool {
+	eventually.Requiref(t, func(ct *eventually.T) {
 		_, err := client.CreateNexusEndpoint(t.Context(), &operatorservice.CreateNexusEndpointRequest{
 			Spec: &nexuspb.EndpointSpec{
 				Name: endpointName,
@@ -118,11 +118,10 @@ func createNexusEndpoint(t *testing.T, conn *grpc.ClientConn, endpointName, name
 				},
 			},
 		})
-		if err == nil {
-			return true
+		if err != nil {
+			st, ok := status.FromError(err)
+			require.True(ct, ok && st.Code() == codes.AlreadyExists, "unexpected error: %v", err)
 		}
-		st, ok := status.FromError(err)
-		return ok && st.Code() == codes.AlreadyExists
 	}, retryTimeout, time.Second, "failed to create nexus endpoint %s", endpointName)
 }
 
@@ -134,15 +133,11 @@ func waitForClusterFormation(t *testing.T, conn *grpc.ClientConn, timeout time.D
 
 	client := adminservice.NewAdminServiceClient(conn)
 
-	require.Eventually(t, func() bool {
+	eventually.Requiref(t, func(ct *eventually.T) {
 		resp, err := client.DescribeCluster(t.Context(), &adminservice.DescribeClusterRequest{})
-		if err != nil {
-			return false
-		}
+		require.NoError(ct, err)
 		membership := resp.GetMembershipInfo()
-		if membership == nil {
-			return false
-		}
+		require.NotNil(ct, membership)
 
 		seen := map[int]bool{}
 		for _, member := range membership.GetReachableMembers() {
@@ -159,12 +154,8 @@ func waitForClusterFormation(t *testing.T, conn *grpc.ClientConn, timeout time.D
 
 		for _, ps := range portSets {
 			for _, port := range ps.membershipPorts() {
-				if !seen[port] {
-					t.Logf("Waiting for cluster formation: port %d not yet visible", port)
-					return false
-				}
+				require.True(ct, seen[port], "Waiting for cluster formation: port %d not yet visible", port)
 			}
 		}
-		return true
 	}, timeout, time.Second, "cluster did not form within %v", timeout)
 }

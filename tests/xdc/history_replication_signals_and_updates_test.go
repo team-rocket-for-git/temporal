@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
@@ -29,6 +28,7 @@ import (
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/persistence/serialization"
 	"go.temporal.io/server/common/primitives"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/protoutils"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/service/history/replication"
@@ -791,7 +791,7 @@ func (c *hrsuTestCluster) sendUpdateAndWaitUntilStage(ctx context.Context, updat
 }
 
 func (c *hrsuTestCluster) waitUpdateAdmitted(tv *testvars.TestVars, updateID string) {
-	c.t.s.EventuallyWithTf(func(collectT *assert.CollectT) {
+	eventually.Requiref(c.t.s.T(), func(t *eventually.T) {
 		pollResp, pollErr := c.testCluster.FrontendClient().PollWorkflowExecutionUpdate(testcore.NewContext(), &workflowservice.PollWorkflowExecutionUpdateRequest{
 			Namespace: tv.NamespaceName().String(),
 			UpdateRef: &updatepb.UpdateRef{
@@ -800,9 +800,9 @@ func (c *hrsuTestCluster) waitUpdateAdmitted(tv *testvars.TestVars, updateID str
 			},
 			WaitPolicy: &updatepb.WaitPolicy{LifecycleStage: enumspb.UPDATE_WORKFLOW_EXECUTION_LIFECYCLE_STAGE_UNSPECIFIED},
 		})
-		require.NoError(collectT, pollErr)
+		require.NoError(t, pollErr)
 		// This is technically "at least Admitted".
-		require.GreaterOrEqual(collectT, pollResp.GetStage(), enumspb.UPDATE_WORKFLOW_EXECUTION_LIFECYCLE_STAGE_ADMITTED)
+		require.GreaterOrEqual(t, pollResp.GetStage(), enumspb.UPDATE_WORKFLOW_EXECUTION_LIFECYCLE_STAGE_ADMITTED)
 	}, 5*time.Second, 10*time.Millisecond, "update %s did not reach Admitted stage", updateID)
 }
 

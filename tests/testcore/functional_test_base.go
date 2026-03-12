@@ -38,6 +38,7 @@ import (
 	"go.temporal.io/server/common/primitives/timestamp"
 	"go.temporal.io/server/common/rpc"
 	"go.temporal.io/server/common/telemetry"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/historyrequire"
 	"go.temporal.io/server/common/testing/protorequire"
 	"go.temporal.io/server/common/testing/taskpoller"
@@ -639,6 +640,21 @@ func (s *FunctionalTestBase) WaitForChannel(ctx context.Context, ch chan struct{
 	case <-ctx.Done():
 		s.FailNow("context timeout while waiting for channel")
 	}
+}
+
+// Eventually shadows testify's suite.Eventually to use eventually.Require instead.
+// This ensures all polling assertions use require semantics (fail-fast) and proper
+// Goexit detection. Callers using the old func() bool signature will get a compile
+// error, forcing migration.
+func (s *FunctionalTestBase) Eventually(condition func(*eventually.T), timeout, pollInterval time.Duration) {
+	s.T().Helper()
+	eventually.Require(s.T(), condition, timeout, pollInterval)
+}
+
+// Eventuallyf shadows testify's suite.Eventuallyf with eventually.Requiref.
+func (s *FunctionalTestBase) Eventuallyf(condition func(*eventually.T), timeout, pollInterval time.Duration, msg string, args ...any) {
+	s.T().Helper()
+	eventually.Requiref(s.T(), condition, timeout, pollInterval, msg, args...)
 }
 
 // TODO (alex): change to nsName namespace.Name

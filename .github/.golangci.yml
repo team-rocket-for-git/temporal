@@ -33,7 +33,15 @@ linters:
     forbidigo:
       forbid:
         - pattern: time.Sleep
-          msg: "Please use require.Eventually or assert.Eventually instead unless you've no other option"
+          msg: "Please use eventually.Require from common/testing/eventually instead unless you've no other option"
+        - pattern: "^EventuallyWithT$"
+          msg: "Do not use testify's EventuallyWithT. Use eventually.Require from common/testing/eventually instead."
+        - pattern: "^EventuallyWithTf$"
+          msg: "Do not use testify's EventuallyWithTf. Use eventually.Requiref from common/testing/eventually instead."
+        - pattern: "^Eventually$"
+          msg: "Do not use testify's Eventually. Use eventually.Require from common/testing/eventually instead."
+        - pattern: "^Eventuallyf$"
+          msg: "Do not use testify's Eventuallyf. Use eventually.Requiref from common/testing/eventually instead."
         - pattern: "^panic$"
           msg: "Please avoid using panic in application code"
         - pattern: time\.Now
@@ -55,6 +63,8 @@ linters:
           deny:
             - pkg: github.com/pborman/uuid
               desc: "Importing github.com/pborman/uuid is disallowed; use github.com/google/uuid instead"
+            - pkg: github.com/stretchr/testify/assert
+              desc: "Use require instead of assert. For polling, use common/testing/eventually."
     importas:
       # Enforce the aliases below.
       no-unaliased: true
@@ -197,6 +207,22 @@ linters:
         text: "context.Background"
         linters:
           - forbidigo
+      - path-except: _test\.go|tests/.+\.go # only enforce Eventually rules in test files
+        text: "EventuallyWithT|^Eventually$|^Eventuallyf$"
+        linters:
+          - forbidigo
+      - path: common/testing/eventually/ # allow the eventually package itself
+        text: "EventuallyWithT|^Eventually$|^Eventuallyf$"
+        linters:
+          - forbidigo
+      - path: common/testing/eventually/ # allow time.Sleep and assert in the eventually package tests
+        text: "time.Sleep"
+        linters:
+          - forbidigo
+      - path: common/testing/eventually/
+        linters:
+          - testifylint
+          - depguard
       - path: _test\.go|tests/.+\.go|common/testing/
         text: "(cyclomatic|cognitive)" # false positives when using subtests
         linters:

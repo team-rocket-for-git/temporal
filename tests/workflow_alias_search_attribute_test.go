@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commonpb "go.temporal.io/api/common/v1"
@@ -20,6 +19,7 @@ import (
 	"go.temporal.io/server/api/matchingservice/v1"
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/searchattribute/sadefs"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
 )
@@ -73,7 +73,7 @@ func (s *WorkflowAliasSearchAttributeTestSuite) startVersionedPollerAndValidate(
 		DeploymentName: deploymentName,
 		BuildId:        buildID,
 	}
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		a := require.New(t)
 		resp, err := s.GetTestCluster().MatchingClient().CheckTaskQueueVersionMembership(
 			ctx,
@@ -137,8 +137,8 @@ func (s *WorkflowAliasSearchAttributeTestSuite) TestWorkflowAliasSearchAttribute
 	_, err := s.createWorkflow(ctx, tv, nil)
 	s.Require().NoError(err)
 
-	s.EventuallyWithT(
-		func(t *assert.CollectT) {
+	s.Eventually(
+		func(t *eventually.T) {
 			// Filter by WorkflowId to isolate this test's workflow from other tests
 			resp, err := s.SdkClient().ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
 				Namespace: s.Namespace().String(),
@@ -200,8 +200,8 @@ func (s *WorkflowAliasSearchAttributeTestSuite) TestWorkflowAliasSearchAttribute
 	_, err = s.createWorkflow(ctx, tv, sa)
 	s.Require().NoError(err)
 
-	s.EventuallyWithT(
-		func(t *assert.CollectT) {
+	s.Eventually(
+		func(t *eventually.T) {
 			// Filter by WorkflowId to isolate this test's workflow from other tests
 			queriedResp, err := s.SdkClient().ListWorkflow(ctx, &workflowservice.ListWorkflowExecutionsRequest{
 				Namespace: s.Namespace().String(),

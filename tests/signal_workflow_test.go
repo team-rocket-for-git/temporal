@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -25,6 +26,7 @@ import (
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/rpc"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/service/history/consts"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -1432,10 +1434,10 @@ func (s *SignalWorkflowTestSuite) TestSignalWithStartWorkflow() {
 
 	// Assert visibility is correct
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			listResp, err := s.FrontendClient().ListOpenWorkflowExecutions(testcore.NewContext(), listOpenRequest)
-			s.NoError(err)
-			return len(listResp.Executions) == 1
+			require.NoError(t, err)
+			require.Len(t, listResp.Executions, 1)
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,
@@ -1454,10 +1456,10 @@ func (s *SignalWorkflowTestSuite) TestSignalWithStartWorkflow() {
 	s.NoError(err)
 
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			listResp, err := s.FrontendClient().ListOpenWorkflowExecutions(testcore.NewContext(), listOpenRequest)
-			s.NoError(err)
-			return len(listResp.Executions) == 0
+			require.NoError(t, err)
+			require.Empty(t, listResp.Executions)
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,

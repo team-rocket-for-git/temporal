@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commonpb "go.temporal.io/api/common/v1"
@@ -21,6 +20,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log"
 	"go.temporal.io/server/common/searchattribute/sadefs"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 )
 
@@ -72,7 +72,7 @@ func (s *WorkflowTaskReportedProblemsReplicationSuite) checkReportedProblemsSear
 	expectedCategory, expectedCause string,
 	shouldExist bool,
 ) {
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := client.DescribeWorkflow(context.Background(), workflowID, runID)
 		require.NoError(t, err)
 
@@ -234,7 +234,7 @@ func (s *WorkflowTaskReportedProblemsReplicationSuite) TestWFTFailureReportedPro
 	s.NoError(err)
 
 	// Verify search attributes are NOT set in cluster0 when config is 0
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := s.activeSDKClient.DescribeWorkflow(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		_, ok := description.TypedSearchAttributes.GetKeywordList(temporal.NewSearchAttributeKeyKeywordList(sadefs.TemporalReportedProblems))
@@ -242,7 +242,7 @@ func (s *WorkflowTaskReportedProblemsReplicationSuite) TestWFTFailureReportedPro
 	}, 5*time.Second, 500*time.Millisecond)
 
 	// Verify workflow task attempts are accumulating
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		exec, err := s.activeSDKClient.DescribeWorkflowExecution(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, exec.PendingWorkflowTask.Attempt, int32(2))
@@ -253,7 +253,7 @@ func (s *WorkflowTaskReportedProblemsReplicationSuite) TestWFTFailureReportedPro
 	defer cleanup2()
 
 	// Verify search attributes are now set in cluster0
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := s.activeSDKClient.DescribeWorkflow(ctx, workflowRun.GetID(), workflowRun.GetRunID())
 		require.NoError(t, err)
 		saValues, ok := description.TypedSearchAttributes.GetKeywordList(temporal.NewSearchAttributeKeyKeywordList(sadefs.TemporalReportedProblems))
@@ -363,12 +363,12 @@ func (s *WorkflowTaskReportedProblemsReplicationSuite) TestWFTFailureReportedPro
 	)
 
 	// Verify the search attribute persists even as the workflow continues to fail and create buffered events
-	s.EventuallyWithT(func(t *assert.CollectT) {
+	s.Eventually(func(t *eventually.T) {
 		description, err := s.activeSDKClient.DescribeWorkflow(ctx, workflowRun.GetID(), workflowRun.GetRunID())
-		s.NoError(err)
+		require.NoError(t, err)
 		saVal, ok := description.TypedSearchAttributes.GetKeywordList(temporal.NewSearchAttributeKeyKeywordList(sadefs.TemporalReportedProblems))
-		s.True(ok, "Search attribute should still be present during continued failures")
-		s.NotEmpty(saVal, "Search attribute should not be empty during continued failures")
+		require.True(t, ok, "Search attribute should still be present during continued failures")
+		require.NotEmpty(t, saVal, "Search attribute should not be empty during continued failures")
 	}, 5*time.Second, 500*time.Millisecond)
 
 	// get standby client

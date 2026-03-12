@@ -24,6 +24,7 @@ import (
 	"go.temporal.io/server/common/payload"
 	"go.temporal.io/server/common/payloads"
 	"go.temporal.io/server/common/tasktoken"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/protorequire"
 	"go.temporal.io/server/common/testing/testvars"
 	"go.temporal.io/server/tests/testcore"
@@ -3013,14 +3014,15 @@ func (s *standaloneActivityTestSuite) TestListActivityExecutions() {
 		t.Helper()
 		var resp *workflowservice.ListActivityExecutionsResponse
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				var err error
 				resp, err = s.FrontendClient().ListActivityExecutions(ctx, &workflowservice.ListActivityExecutionsRequest{
 					Namespace: s.Namespace().String(),
 					PageSize:  pageSize,
 					Query:     query,
 				})
-				return err == nil && len(resp.GetExecutions()) >= 1
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, len(resp.GetExecutions()), 1)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -3084,14 +3086,15 @@ func (s *standaloneActivityTestSuite) TestListActivityExecutions() {
 
 		var resp *workflowservice.ListActivityExecutionsResponse
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				var err error
 				resp, err = s.FrontendClient().ListActivityExecutions(ctx, &workflowservice.ListActivityExecutionsRequest{
 					Namespace: s.Namespace().String(),
 					PageSize:  10,
 					Query:     fmt.Sprintf("%s = '%s'", customSAName, customSAValue),
 				})
-				return err == nil && len(resp.GetExecutions()) >= 1
+				require.NoError(t, err)
+				require.GreaterOrEqual(t, len(resp.GetExecutions()), 1)
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -3166,12 +3169,13 @@ func (s *standaloneActivityTestSuite) TestListActivityExecutions() {
 
 		// Wait for both activities to be indexed in Elasticsearch before testing pagination
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				countResp, err := s.FrontendClient().CountActivityExecutions(ctx, &workflowservice.CountActivityExecutionsRequest{
 					Namespace: s.Namespace().String(),
 					Query:     fmt.Sprintf("ActivityType = '%s'", testActivityType),
 				})
-				return err == nil && countResp.GetCount() == 2
+				require.NoError(t, err)
+				require.Equal(t, int64(2), countResp.GetCount())
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -3223,12 +3227,13 @@ func (s *standaloneActivityTestSuite) TestCountActivityExecutions() {
 	verifyCountQuery := func(t *testing.T, query string, expectedCount int) {
 		t.Helper()
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				resp, err := s.FrontendClient().CountActivityExecutions(ctx, &workflowservice.CountActivityExecutionsRequest{
 					Namespace: s.Namespace().String(),
 					Query:     query,
 				})
-				return err == nil && resp.GetCount() == int64(expectedCount)
+				require.NoError(t, err)
+				require.Equal(t, int64(expectedCount), resp.GetCount())
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -3265,13 +3270,14 @@ func (s *standaloneActivityTestSuite) TestCountActivityExecutions() {
 		query := fmt.Sprintf("ActivityType = '%s' GROUP BY ExecutionStatus", groupByType.Name)
 		var resp *workflowservice.CountActivityExecutionsResponse
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				var err error
 				resp, err = s.FrontendClient().CountActivityExecutions(ctx, &workflowservice.CountActivityExecutionsRequest{
 					Namespace: s.Namespace().String(),
 					Query:     query,
 				})
-				return err == nil && resp.GetCount() == 3
+				require.NoError(t, err)
+				require.Equal(t, int64(3), resp.GetCount())
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,
@@ -3296,15 +3302,12 @@ func (s *standaloneActivityTestSuite) TestCountActivityExecutions() {
 		})
 		require.NoError(t, err)
 
-		s.Eventually(func() bool {
+		s.Eventually(func(t *eventually.T) {
 			descResp, err := s.OperatorClient().ListSearchAttributes(ctx, &operatorservice.ListSearchAttributesRequest{
 				Namespace: s.Namespace().String(),
 			})
-			if err != nil {
-				return false
-			}
-			_, ok := descResp.CustomAttributes[customSAName]
-			return ok
+			require.NoError(t, err)
+			require.Contains(t, descResp.CustomAttributes, customSAName)
 		}, 10*time.Second, 100*time.Millisecond)
 
 		for i := range 2 {
@@ -3327,12 +3330,13 @@ func (s *standaloneActivityTestSuite) TestCountActivityExecutions() {
 		}
 
 		s.Eventually(
-			func() bool {
+			func(t *eventually.T) {
 				resp, err := s.FrontendClient().CountActivityExecutions(ctx, &workflowservice.CountActivityExecutionsRequest{
 					Namespace: s.Namespace().String(),
 					Query:     fmt.Sprintf("%s = '%s'", customSAName, customSAValue),
 				})
-				return err == nil && resp.GetCount() == 2
+				require.NoError(t, err)
+				require.Equal(t, int64(2), resp.GetCount())
 			},
 			testcore.WaitForESToSettle,
 			100*time.Millisecond,

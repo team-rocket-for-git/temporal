@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -13,6 +14,7 @@ import (
 	taskqueuepb "go.temporal.io/api/taskqueue/v1"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/tests/testcore"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -122,7 +124,7 @@ func (s *WorkflowVisibilityTestSuite) TestVisibility() {
 
 	var historyLength int64
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err3 := s.FrontendClient().ListClosedWorkflowExecutions(testcore.NewContext(), &workflowservice.ListClosedWorkflowExecutionsRequest{
 				Namespace:       s.Namespace().String(),
 				MaximumPageSize: 100,
@@ -133,15 +135,11 @@ func (s *WorkflowVisibilityTestSuite) TestVisibility() {
 					},
 				},
 			})
-			s.NoError(err3)
+			require.NoError(t, err3)
+			require.Len(t, resp.Executions, 1)
 			closedCount = len(resp.Executions)
-			if closedCount == 1 {
-				historyLength = resp.Executions[0].HistoryLength
-				s.Nil(resp.NextPageToken)
-				return true
-			}
-			s.Logger.Info("Closed WorkflowExecution is not yet visible")
-			return false
+			historyLength = resp.Executions[0].HistoryLength
+			require.Nil(t, resp.NextPageToken)
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,
@@ -150,7 +148,7 @@ func (s *WorkflowVisibilityTestSuite) TestVisibility() {
 	s.Equal(int64(5), historyLength)
 
 	s.Eventually(
-		func() bool {
+		func(t *eventually.T) {
 			resp, err4 := s.FrontendClient().ListOpenWorkflowExecutions(testcore.NewContext(), &workflowservice.ListOpenWorkflowExecutionsRequest{
 				Namespace:       s.Namespace().String(),
 				MaximumPageSize: 100,
@@ -161,14 +159,10 @@ func (s *WorkflowVisibilityTestSuite) TestVisibility() {
 					},
 				},
 			})
-			s.NoError(err4)
+			require.NoError(t, err4)
 			openCount = len(resp.Executions)
-			if openCount == 1 {
-				s.Nil(resp.NextPageToken)
-				return true
-			}
-			s.Logger.Info("Open WorkflowExecution is not yet visible")
-			return false
+			require.Equal(t, 1, openCount)
+			require.Nil(t, resp.NextPageToken)
 		},
 		testcore.WaitForESToSettle,
 		100*time.Millisecond,

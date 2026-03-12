@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	commandpb "go.temporal.io/api/command/v1"
 	commonpb "go.temporal.io/api/common/v1"
@@ -26,6 +27,7 @@ import (
 	"go.temporal.io/server/common/dynamicconfig"
 	"go.temporal.io/server/common/log/tag"
 	"go.temporal.io/server/common/payloads"
+	"go.temporal.io/server/common/testing/eventually"
 	"go.temporal.io/server/common/testing/protoutils"
 	"go.temporal.io/server/common/testing/taskpoller"
 	"go.temporal.io/server/common/testing/testvars"
@@ -260,15 +262,15 @@ func (s *ResetWorkflowTestSuite) TestResetWorkflowAfterTimeout() {
 	s.runWorkflowWithPoller(tv)
 
 	var historyEvents []*historypb.HistoryEvent
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		historyEvents = s.GetHistory(s.Namespace().String(), &commonpb.WorkflowExecution{
 			WorkflowId: tv.WorkflowID(),
 			RunId:      we.RunId,
 		})
 		lastEvent := historyEvents[len(historyEvents)-1]
-		s.NotNil(historyEvents)
+		require.NotNil(t, historyEvents)
 
-		return lastEvent.GetEventType() == enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED
+		require.Equal(t, enumspb.EVENT_TYPE_WORKFLOW_EXECUTION_COMPLETED, lastEvent.GetEventType())
 
 	}, 2*time.Second, 200*time.Millisecond)
 
@@ -281,7 +283,7 @@ func (s *ResetWorkflowTestSuite) TestResetWorkflowAfterTimeout() {
 
 	// wait till workflow is closed
 	closedCount := 0
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.FrontendClient().ListClosedWorkflowExecutions(testcore.NewContext(), &workflowservice.ListClosedWorkflowExecutionsRequest{
 			Namespace:       s.Namespace().String(),
 			MaximumPageSize: 100,
@@ -293,13 +295,13 @@ func (s *ResetWorkflowTestSuite) TestResetWorkflowAfterTimeout() {
 				WorkflowId: tv.WorkflowID(),
 			}},
 		})
-		s.NoError(err)
+		require.NoError(t, err)
 		closedCount = len(resp.Executions)
 		if closedCount == 0 {
 			s.Logger.Info("Closed WorkflowExecution is not yet visible")
 		}
 
-		return closedCount > 0
+		require.Positive(t, closedCount)
 
 	}, 5*time.Second, 500*time.Millisecond)
 	s.Equal(1, closedCount)
@@ -955,13 +957,13 @@ func (s *ResetWorkflowTestSuite) TestResetWorkflow_ResetAfterContinueAsNew() {
 	s.NoError(err)
 
 	// wait for your workflow and its CaN to complete
-	s.Eventually(func() bool {
+	s.Eventually(func(t *eventually.T) {
 		resp, err := s.FrontendClient().CountWorkflowExecutions(ctx, &workflowservice.CountWorkflowExecutionsRequest{
 			Namespace: s.Namespace().String(),
 			Query:     fmt.Sprintf("WorkflowId = \"%s\" AND ExecutionStatus != \"Running\"", run.GetID()),
 		})
-		s.NoError(err)
-		return resp.GetCount() >= 2
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, resp.GetCount(), int64(2))
 	}, 30*time.Second, time.Second)
 
 	wfExec := &commonpb.WorkflowExecution{
