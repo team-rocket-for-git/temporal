@@ -412,16 +412,9 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationSyncCompletion_LargePayload()
 	s.Error(err)
 
 	// Verify the failure details by scanning history.
-	history := s.SdkClient().GetWorkflowHistory(ctx, run.GetID(), "", false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
-	for history.HasNext() {
-		ev, err := history.Next()
-		s.NoError(err)
-		if attr := ev.GetNexusOperationFailedEventAttributes(); attr != nil {
-			s.Equal("http: response body too large", attr.Failure.Cause.Message)
-			return
-		}
-	}
-	s.Fail("expected NexusOperationFailed event in history")
+	hist := s.GetHistory(s.Namespace().String(), &commonpb.WorkflowExecution{WorkflowId: run.GetID()})
+	s.ContainsHistoryEvents(`
+NexusOperationFailed {"Failure": {"Cause": {"Message": "http: response body too large"}}}`, hist)
 }
 
 func (s *NexusWorkflowTestSuite) TestNexusOperationAsyncCompletion() {
@@ -667,18 +660,8 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationAsyncCompletion() {
 	})
 	s.NoError(err)
 
-	hist := s.SdkClient().GetWorkflowHistory(ctx, run.GetID(), resp.RunId, false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
-
-	seenCompletedEvent := false
-	for hist.HasNext() {
-		event, err := hist.Next()
-		s.NoError(err)
-		if event.EventType == enumspb.EVENT_TYPE_NEXUS_OPERATION_COMPLETED {
-			seenCompletedEvent = true
-			break
-		}
-	}
-	s.True(seenCompletedEvent)
+	resetHist := s.GetHistory(s.Namespace().String(), &commonpb.WorkflowExecution{WorkflowId: run.GetID(), RunId: resp.RunId})
+	s.ContainsHistoryEvents(`NexusOperationCompleted`, resetHist)
 
 	// Reset the workflow again to the same point with enumspb.RESET_REAPPLY_EXCLUDE_TYPE_NEXUS option
 	// and verify that the completion event has been excluded.
@@ -692,12 +675,9 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationAsyncCompletion() {
 	})
 	s.NoError(err)
 
-	hist = s.SdkClient().GetWorkflowHistory(ctx, run.GetID(), resp.RunId, false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
-
-	seenCompletedEvent = false
-	for hist.HasNext() {
-		event, err := hist.Next()
-		s.NoError(err)
+	resetHist2 := s.GetHistory(s.Namespace().String(), &commonpb.WorkflowExecution{WorkflowId: run.GetID(), RunId: resp.RunId})
+	seenCompletedEvent := false
+	for _, event := range resetHist2 {
 		if event.EventType == enumspb.EVENT_TYPE_NEXUS_OPERATION_COMPLETED {
 			seenCompletedEvent = true
 			break
@@ -1531,17 +1511,9 @@ func (s *NexusWorkflowTestSuite) TestNexusOperationAsyncCompletionAfterReset() {
 	})
 	s.NoError(err)
 
-	hist := s.SdkClient().GetWorkflowHistory(ctx, run.GetID(), resetResp.RunId, false, enumspb.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+	resetHist := s.GetHistory(s.Namespace().String(), &commonpb.WorkflowExecution{WorkflowId: run.GetID(), RunId: resetResp.RunId})
+	s.ContainsHistoryEvents(`NexusOperationStarted`, resetHist)
 
-	seenStartedEvent := false
-	for hist.HasNext() {
-		event, err := hist.Next()
-		s.NoError(err)
-		if event.EventType == enumspb.EVENT_TYPE_NEXUS_OPERATION_STARTED {
-			seenStartedEvent = true
-		}
-	}
-	s.True(seenStartedEvent)
 	completion := nexusrpc.CompleteOperationOptions{
 		Result: testcore.MustToPayload(s.T(), "result"),
 		Header: nexus.Header{commonnexus.CallbackTokenHeader: callbackToken},
